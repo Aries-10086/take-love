@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships          SpaceMember[]
+  moments              Moment[]              @relation("MomentAuthor")
+  suggestions          Suggestion[]
+  suggestionFeedbacks  SuggestionFeedback[]
+  plans                Plan[]
+  createdSpaces        Space[]               @relation("SpaceCreator")
+}
+
+model Space {
+  id         String   @id @default(cuid())
+  name       String
+  inviteCode String   @unique
+  createdBy  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  creator     User          @relation("SpaceCreator", fields: [createdBy], references: [id])
+  members     SpaceMember[]
+  moments     Moment[]
+  suggestions Suggestion[]
+  plans       Plan[]
+}
+
+model SpaceMember {
+  id       String   @id @default(cuid())
+  spaceId  String
+  userId   String
+  role     String   @default("member") // owner | member
+  joinedAt DateTime @default(now())
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, userId])
+  @@unique([userId]) // MVP: one active space per user
+}
+
+model Moment {
+  id           String   @id @default(cuid())
+  spaceId      String
+  authorId     String
+  content      String
+  mood         String
+  tags         String   @default("[]") // JSON array
+  photos       String   @default("[]") // JSON array of paths
+  visibility   String   @default("shared") // shared | private
+  wantAgain    String? // yes | normal | no
+  happenedAt   DateTime @default(now())
+  sourcePlanId String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  space      Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  author     User  @relation("MomentAuthor", fields: [authorId], references: [id])
+  sourcePlan Plan? @relation(fields: [sourcePlanId], references: [id])
+}
+
+model Suggestion {
+  id           String   @id @default(cuid())
+  spaceId      String
+  createdBy    String
+  payload      String // JSON: SuggestionItem[]
+  modelVersion String   @default("rule_v0")
+  createdAt    DateTime @default(now())
+
+  space     Space                @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  creator   User                 @relation(fields: [createdBy], references: [id])
+  feedbacks SuggestionFeedback[]
+  plans     Plan[]
+}
+
+model SuggestionFeedback {
+  id           String   @id @default(cuid())
+  suggestionId String
+  userId       String
+  itemIndex    Int
+  action       String // like | dislike | adopt
+  reasonCodes  String   @default("[]") // JSON array
+  createdAt    DateTime @default(now())
+
+  suggestion Suggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id])
+}
+
+model Plan {
+  id           String    @id @default(cuid())
+  spaceId      String
+  suggestionId String?
+  title        String
+  detail       String
+  duration     String?
+  budget       String?
+  status       String    @default("proposed") // proposed | completed | cancelled
+  scheduledAt  DateTime?
+  completedAt  DateTime?
+  createdBy    String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  space      Space       @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  suggestion Suggestion? @relation(fields: [suggestionId], references: [id])
+  creator    User        @relation(fields: [createdBy], references: [id])
+  moment     Moment?
+}
