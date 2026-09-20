@@ -1,12 +1,16 @@
 import Link from "next/link";
+import { format } from "date-fns";
+import { zhCN } from "date-fns/locale";
 import { redirect } from "next/navigation";
 import { AppNav } from "@/components/app-nav";
 import { CopyInviteButton } from "@/components/copy-invite";
+import { CoupleHero } from "@/components/couple-hero";
+import { HomeFilter } from "@/components/home-filter";
+import { HomeFlash } from "@/components/home-flash";
 import { MomentCard } from "@/components/moment-card";
 import { StatusSubmit } from "@/components/status-submit";
 import { generateSuggestionAction } from "@/lib/actions";
 import { auth } from "@/lib/auth";
-import { MOODS, TAGS } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { getMembership } from "@/lib/space";
 import { parseTags } from "@/lib/suggestions";
@@ -14,7 +18,16 @@ import { parseTags } from "@/lib/suggestions";
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ mood?: string; tag?: string; welcome?: string }>;
+  searchParams: Promise<{
+    mood?: string;
+    tag?: string;
+    q?: string;
+    welcome?: string;
+    settled?: string;
+    saved?: string;
+    joined?: string;
+    moment?: string;
+  }>;
 }) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
@@ -22,7 +35,7 @@ export default async function HomePage({
   const membership = await getMembership(session.user.id);
   if (!membership) redirect("/onboarding");
 
-  const { mood, tag, welcome } = await searchParams;
+  const { mood, tag, q, welcome, settled, saved, joined, moment } = await searchParams;
 
   const moments = await prisma.moment.findMany({
     where: {
@@ -31,112 +44,241 @@ export default async function HomePage({
       ...(mood ? { mood } : {}),
     },
     include: { author: { select: { name: true } } },
-    orderBy: { happenedAt: "desc" },
+    orderBy: [{ pinned: "desc" }, { happenedAt: "desc" }],
   });
 
-  const filtered = tag
+  let filtered = tag
     ? moments.filter((m) => parseTags(m.tags).includes(tag))
     : moments;
+
+  if (q?.trim()) {
+    const needle = q.trim().toLowerCase();
+    filtered = filtered.filter((m) => {
+      const tags = parseTags(m.tags).join(" ");
+      return `${m.content} ${tags}`.toLowerCase().includes(needle);
+    });
+  }
 
   const weekStart = new Date();
   weekStart.setDate(weekStart.getDate() - 7);
   const weekCount = moments.filter((m) => m.happenedAt >= weekStart).length;
+  const hasHistory = moments.length > 0;
+
+  const openPlans = await prisma.plan.findMany({
+    where: { spaceId: membership.spaceId, status: "proposed" },
+    orderBy: [{ scheduledAt: "asc" }, { createdAt: "desc" }],
+  });
+  const openPlanCount = openPlans.length;
+
+  const weekCompleted = await prisma.plan.count({
+    where: {
+      spaceId: membership.spaceId,
+      status: "completed",
+      completedAt: { gte: weekStart },
+    },
+  });
+
+  const wantAgainWeek = moments.filter(
+    (m) => m.happenedAt >= weekStart && m.wantAgain === "yes",
+  ).length;
+
+  const me = membership.space.members.find((m) => m.userId === session.user.id);
   const partner = membership.space.members.find((m) => m.userId !== session.user.id);
   const waitingPartner = !partner;
+  const hasNoMoments = moments.length === 0;
+  const filterEmpty = filtered.length === 0;
+
+  const flashKind = settled
+    ? "settled"
+    : saved
+      ? "saved"
+      : joined
+        ? "joined"
+        : welcome
+          ? "welcome"
+          : null;
+
+  const weekNote =
+    weekCount > 0
+      ? `最近 7 天写下了 ${weekCount} 段相处`
+      : hasHistory
+        ? "这周还没新写的，随手记一句也很好"
+        : "还没有写下相处，从今天开始";
+
+  const earliestShared = await prisma.moment.findFirst({
+    where: { spaceId: membership.spaceId, visibility: "shared" },
+    orderBy: { happenedAt: "asc" },
+    select: { happenedAt: true },
+  });
+  const since =
+    membership.space.anniversaryAt ??
+    earliestShared?.happenedAt ??
+    membership.space.createdAt;
+
+  const pinned = filtered.filter((m) => m.pinned);
+  const rest = filtered.filter((m) => !m.pinned);
+
+  const overdue = openPlans.filter(
+    (p) => p.scheduledAt && p.scheduledAt.getTime() < Date.now(),
+  );
 
   return (
     <main className="shell">
-      <div className="page-head">
-        <div>
-          <p className="brand-mark">
-            {membership.space.name}{" "}
-            <span>{partner ? `与 ${partner.user.name}` : "等待另一半"}</span>
-          </p>
-          <h1>我们的时光</h1>
-          <p className="week-note">最近 7 天写下了 {weekCount} 段相处。</p>
-        </div>
-        <div className="inline-actions">
-          <Link className="btn btn-primary" href="/moments/new">
-            记一条
-          </Link>
-          <form action={generateSuggestionAction}>
-            <StatusSubmit label="要建议" className="btn btn-ghost" />
-          </form>
-        </div>
-      </div>
+      <CoupleHero
+        spaceName={membership.space.name}
+        meName={me?.user.name ?? session.user.name ?? "我"}
+        partnerName={partner?.user.name}
+        since={since}
+        momentCount={moments.length}
+        openPlanCount={openPlanCount}
+        weekNote={weekNote}
+      />
 
-      {(welcome === "1" || waitingPartner) && (
+      <section className="week-summary">
+        <div>
+          <strong>{weekCount}</strong>
+          <span>本周时刻</span>
+        </div>
+        <div>
+          <strong>{weekCompleted}</strong>
+          <span>完成约会</span>
+        </div>
+        <div>
+          <strong>{wantAgainWeek}</strong>
+          <span>想再来</span>
+        </div>
+      </section>
+
+      {flashKind ? (
+        <HomeFlash
+          kind={flashKind}
+          momentHref={moment ? `/moments/${moment}` : undefined}
+        />
+      ) : null}
+
+      {(welcome === "1" || waitingPartner) && !flashKind ? (
         <section className="invite-banner">
           <div>
             <p className="week-note" style={{ marginBottom: "0.35rem" }}>
-              {welcome === "1" ? "空间已创建。把邀请码发给另一半：" : "还在等待另一半加入："}
+              {welcome === "1" ? "空间已创建。把邀请发给另一半：" : "还在等待另一半加入："}
             </p>
             <p className="invite-code">{membership.space.inviteCode}</p>
           </div>
-          <div className="inline-actions">
-            <CopyInviteButton code={membership.space.inviteCode} />
+          <div className="stack" style={{ gap: "0.5rem" }}>
+            <CopyInviteButton
+              code={membership.space.inviteCode}
+              spaceName={membership.space.name}
+            />
             <Link className="btn btn-ghost" href="/settings">
               空间设置
             </Link>
           </div>
         </section>
-      )}
+      ) : null}
 
-      <form className="filter-bar" method="get">
-        <label className="sr-only" htmlFor="mood">
-          心情筛选
-        </label>
-        <select id="mood" name="mood" defaultValue={mood ?? ""}>
-          <option value="">全部心情</option>
-          {MOODS.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-        <label className="sr-only" htmlFor="tag">
-          标签筛选
-        </label>
-        <select id="tag" name="tag" defaultValue={tag ?? ""}>
-          <option value="">全部标签</option>
-          {TAGS.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
-        <button className="btn btn-ghost" type="submit">
-          筛选
-        </button>
-        {(mood || tag) && (
-          <Link className="btn btn-ghost" href="/home">
-            清除
+      {waitingPartner && flashKind === "welcome" ? (
+        <section className="invite-banner">
+          <div>
+            <p className="week-note" style={{ marginBottom: "0.35rem" }}>
+              邀请码
+            </p>
+            <p className="invite-code">{membership.space.inviteCode}</p>
+          </div>
+          <CopyInviteButton
+            code={membership.space.inviteCode}
+            spaceName={membership.space.name}
+          />
+        </section>
+      ) : null}
+
+      {openPlanCount > 0 && !waitingPartner && !flashKind ? (
+        <section className="loop-banner">
+          <p>
+            {overdue.length > 0
+              ? `有 ${overdue.length} 个约会已过计划时间，记得完成或改期。`
+              : "你们有待完成的约会。做完后记得点完成，它会变成新的时刻。"}
+            {openPlans[0]?.scheduledAt
+              ? ` 最近一次：${format(openPlans[0].scheduledAt, "M月d日 HH:mm", { locale: zhCN })}`
+              : ""}
+          </p>
+          <Link className="btn btn-ghost" href="/plans">
+            去看看
           </Link>
-        )}
-      </form>
+        </section>
+      ) : null}
 
-      {filtered.length === 0 ? (
+      <div className="section-head">
+        <h2>回忆</h2>
+        <p>按时间回看你们写下的相处</p>
+      </div>
+
+      {!hasNoMoments ? <HomeFilter mood={mood} tag={tag} q={q} /> : null}
+
+      {filterEmpty ? (
         <div className="empty">
-          还没有记录。先写下今天的一句相处，后面的建议会更懂你们。
+          {hasNoMoments
+            ? "还没有记录。先写下今天的一句相处，后面的建议会更懂你们。"
+            : "没有符合筛选的记录。"}
+          <div className="inline-actions" style={{ marginTop: "1rem" }}>
+            {hasNoMoments ? (
+              <Link className="btn btn-accent" href="/moments/new">
+                写下第一条
+              </Link>
+            ) : (
+              <Link className="btn btn-ghost" href="/home">
+                清除筛选
+              </Link>
+            )}
+            <form action={generateSuggestionAction}>
+              <StatusSubmit
+                label="先看看建议"
+                pendingLabel="生成中…"
+                className="btn btn-ghost"
+              />
+            </form>
+          </div>
         </div>
       ) : (
-        <section>
-          {filtered.map((moment) => (
-            <MomentCard
-              key={moment.id}
-              id={moment.id}
-              content={moment.content}
-              mood={moment.mood}
-              tags={moment.tags}
-              visibility={moment.visibility}
-              happenedAt={moment.happenedAt}
-              authorName={moment.author.name}
-            />
-          ))}
-        </section>
+        <>
+          {pinned.length > 0 ? (
+            <section className="timeline pinned-block">
+              <p className="pinned-label">置顶</p>
+              {pinned.map((m) => (
+                <MomentCard
+                  key={m.id}
+                  id={m.id}
+                  content={m.content}
+                  mood={m.mood}
+                  tags={m.tags}
+                  visibility={m.visibility}
+                  happenedAt={m.happenedAt}
+                  authorName={m.author.name}
+                  wantAgain={m.wantAgain}
+                  pinned={m.pinned}
+                />
+              ))}
+            </section>
+          ) : null}
+          <section className="timeline">
+            {rest.map((m) => (
+              <MomentCard
+                key={m.id}
+                id={m.id}
+                content={m.content}
+                mood={m.mood}
+                tags={m.tags}
+                visibility={m.visibility}
+                happenedAt={m.happenedAt}
+                authorName={m.author.name}
+                wantAgain={m.wantAgain}
+                pinned={m.pinned}
+              />
+            ))}
+          </section>
+        </>
       )}
 
-      <AppNav current="/home" />
+      <AppNav current="/home" openPlanCount={openPlanCount} />
     </main>
   );
 }

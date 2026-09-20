@@ -5,9 +5,10 @@ import { zhCN } from "date-fns/locale";
 import { ActionForm } from "@/components/action-form";
 import { AppNav } from "@/components/app-nav";
 import { DeleteMomentButton } from "@/components/delete-moment";
+import { PinMomentButton } from "@/components/pin-moment";
 import { updateMomentAction } from "@/lib/actions";
 import { auth } from "@/lib/auth";
-import { MOODS, TAGS, WANT_AGAIN, moodLabel } from "@/lib/constants";
+import { MOODS, TAGS, WANT_AGAIN, moodLabel, wantAgainLabel } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { getMembership } from "@/lib/space";
 import { parseTags } from "@/lib/suggestions";
@@ -40,6 +41,10 @@ export default async function MomentDetailPage({
   const isAuthor = moment.authorId === session.user.id;
   const editing = isAuthor && edit === "1";
   const happenedLocal = format(moment.happenedAt, "yyyy-MM-dd'T'HH:mm");
+
+  const openPlanCount = await prisma.plan.count({
+    where: { spaceId: membership.spaceId, status: "proposed" },
+  });
 
   return (
     <main className="shell">
@@ -169,6 +174,9 @@ export default async function MomentDetailPage({
           <p className="moment-content">{moment.content}</p>
           <div className="moment-footer">
             <span className="chip">{moodLabel(moment.mood)}</span>
+            {wantAgainLabel(moment.wantAgain) ? (
+              <span className="chip soft">{wantAgainLabel(moment.wantAgain)}</span>
+            ) : null}
             {moment.visibility === "private" ? (
               <span className="chip muted">仅自己</span>
             ) : null}
@@ -184,13 +192,18 @@ export default async function MomentDetailPage({
               <Link className="btn btn-ghost" href={`/moments/${moment.id}?edit=1`}>
                 编辑
               </Link>
+              <PinMomentButton momentId={moment.id} pinned={moment.pinned} />
               <DeleteMomentButton momentId={moment.id} />
+            </div>
+          ) : moment.visibility === "shared" ? (
+            <div className="inline-actions">
+              <PinMomentButton momentId={moment.id} pinned={moment.pinned} />
             </div>
           ) : null}
         </article>
       )}
 
-      <AppNav current="/home" />
+      <AppNav current="/home" openPlanCount={openPlanCount} />
     </main>
   );
 }

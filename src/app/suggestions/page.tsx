@@ -1,15 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ActionForm } from "@/components/action-form";
 import { AppNav } from "@/components/app-nav";
 import { StatusSubmit } from "@/components/status-submit";
-import {
-  adoptSuggestionAction,
-  feedbackSuggestionAction,
-  generateSuggestionAction,
-} from "@/lib/actions";
+import { SuggestionItemCard } from "@/components/suggestion-item";
+import { generateSuggestionAction } from "@/lib/actions";
 import { auth } from "@/lib/auth";
-import { DISLIKE_REASONS } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { getMembership } from "@/lib/space";
 import { parseSuggestionPayload } from "@/lib/suggestions";
@@ -28,13 +23,27 @@ export default async function SuggestionsPage({
   const suggestion = id
     ? await prisma.suggestion.findFirst({
         where: { id, spaceId: membership.spaceId },
+        include: { feedbacks: true },
       })
     : await prisma.suggestion.findFirst({
         where: { spaceId: membership.spaceId },
         orderBy: { createdAt: "desc" },
+        include: { feedbacks: true },
       });
 
   const items = suggestion ? parseSuggestionPayload(suggestion.payload) : [];
+  const myFeedback = new Map<number, string>();
+  if (suggestion) {
+    for (const fb of suggestion.feedbacks) {
+      if (fb.userId === session.user.id) {
+        myFeedback.set(fb.itemIndex, fb.action);
+      }
+    }
+  }
+
+  const openPlanCount = await prisma.plan.count({
+    where: { spaceId: membership.spaceId, status: "proposed" },
+  });
 
   return (
     <main className="shell">
@@ -49,6 +58,7 @@ export default async function SuggestionsPage({
         <form action={generateSuggestionAction}>
           <StatusSubmit
             label={suggestion ? "再生成一批" : "生成建议"}
+            pendingLabel="生成中…"
             className="btn btn-primary"
           />
         </form>
@@ -62,99 +72,29 @@ export default async function SuggestionsPage({
               先去记一条
             </Link>
             <form action={generateSuggestionAction}>
-              <StatusSubmit label="生成建议" className="btn btn-primary" />
+              <StatusSubmit
+                label="生成建议"
+                pendingLabel="生成中…"
+                className="btn btn-primary"
+              />
             </form>
           </div>
         </div>
       ) : (
         <section className="panel">
           {items.map((item, index) => (
-            <article key={`${item.title}-${index}`} className="suggestion-card">
-              <ActionForm
-                action={adoptSuggestionAction}
-                submitLabel="就这个"
-                submitClassName="btn btn-accent"
-              >
-                <input type="hidden" name="suggestionId" value={suggestion.id} />
-                <input type="hidden" name="itemIndex" value={index} />
-                <div className="field">
-                  <label htmlFor={`title-${index}`}>标题（可改）</label>
-                  <input
-                    id={`title-${index}`}
-                    name="title"
-                    defaultValue={item.title}
-                    required
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor={`detail-${index}`}>怎么做（可改）</label>
-                  <textarea
-                    id={`detail-${index}`}
-                    name="detail"
-                    defaultValue={item.detail}
-                    required
-                  />
-                </div>
-                <input type="hidden" name="duration" value={item.duration} />
-                <input type="hidden" name="budget" value={item.budget} />
-                <div className="meta-line">
-                  <span>时长 {item.duration}</span>
-                  <span>预算 {item.budget}</span>
-                </div>
-                <p>
-                  <strong>为什么适合你们：</strong>
-                  {item.reason}
-                </p>
-                <div className="moment-footer">
-                  {item.tags.map((tag) => (
-                    <span key={tag} className="chip soft">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </ActionForm>
-
-              <div className="inline-actions" style={{ marginTop: "0.75rem" }}>
-                <ActionForm
-                  action={feedbackSuggestionAction}
-                  submitLabel="喜欢"
-                  submitClassName="btn btn-ghost"
-                >
-                  <input type="hidden" name="suggestionId" value={suggestion.id} />
-                  <input type="hidden" name="itemIndex" value={index} />
-                  <input type="hidden" name="action" value="like" />
-                </ActionForm>
-              </div>
-
-              <details style={{ marginTop: "0.75rem" }}>
-                <summary style={{ cursor: "pointer", color: "var(--ink-soft)" }}>
-                  不合适？告诉原因
-                </summary>
-                <ActionForm
-                  action={feedbackSuggestionAction}
-                  className="stack"
-                  submitLabel="提交反馈"
-                  submitClassName="btn btn-ghost"
-                >
-                  <input type="hidden" name="suggestionId" value={suggestion.id} />
-                  <input type="hidden" name="itemIndex" value={index} />
-                  <input type="hidden" name="action" value="dislike" />
-                  <div className="choice-row" style={{ marginTop: "0.6rem" }}>
-                    {DISLIKE_REASONS.map((reason) => (
-                      <label key={reason.value} className="choice">
-                        <input type="checkbox" name="reasons" value={reason.value} />
-                        {reason.label}
-                      </label>
-                    ))}
-                  </div>
-                </ActionForm>
-              </details>
-            </article>
+            <SuggestionItemCard
+              key={`${item.title}-${index}`}
+              suggestionId={suggestion.id}
+              index={index}
+              item={item}
+              feedbackAction={myFeedback.get(index) ?? null}
+            />
           ))}
         </section>
       )}
 
-      <AppNav current="/suggestions" />
+      <AppNav current="/suggestions" openPlanCount={openPlanCount} />
     </main>
   );
 }

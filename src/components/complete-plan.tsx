@@ -1,17 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { ActionForm } from "@/components/action-form";
 import { cancelPlanAction, completePlanAction } from "@/lib/actions";
-import { MOODS } from "@/lib/constants";
-import { StatusSubmit } from "@/components/status-submit";
+import { MOODS, WANT_AGAIN } from "@/lib/constants";
 
 type Props = {
   planId: string;
+  defaultHappenedAt?: string;
 };
 
-export function CompletePlanPanel({ planId }: Props) {
+export function CompletePlanPanel({ planId, defaultHappenedAt }: Props) {
   const [open, setOpen] = useState(false);
+  const [pendingCancel, startCancel] = useTransition();
 
   if (!open) {
     return (
@@ -19,13 +20,18 @@ export function CompletePlanPanel({ planId }: Props) {
         <button className="btn btn-accent" type="button" onClick={() => setOpen(true)}>
           完成并沉淀
         </button>
-        <form
-          action={async () => {
-            await cancelPlanAction(planId);
+        <button
+          className="btn btn-ghost"
+          type="button"
+          disabled={pendingCancel}
+          onClick={() => {
+            const ok = window.confirm("确定取消这条约会吗？");
+            if (!ok) return;
+            startCancel(() => cancelPlanAction(planId));
           }}
         >
-          <StatusSubmit label="取消这条" className="btn btn-ghost" />
-        </form>
+          {pendingCancel ? "取消中…" : "取消这条"}
+        </button>
       </div>
     );
   }
@@ -46,6 +52,15 @@ export function CompletePlanPanel({ planId }: Props) {
         />
       </div>
       <div className="field">
+        <label htmlFor={`happened-${planId}`}>实际发生时间</label>
+        <input
+          id={`happened-${planId}`}
+          name="happenedAt"
+          type="datetime-local"
+          defaultValue={defaultHappenedAt}
+        />
+      </div>
+      <div className="field">
         <label>完成后的心情</label>
         <div className="choice-row">
           {MOODS.map((mood, index) => (
@@ -57,6 +72,17 @@ export function CompletePlanPanel({ planId }: Props) {
                 defaultChecked={index === 0}
               />
               {mood.label}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="field">
+        <label>还想再来一次吗？</label>
+        <div className="choice-row">
+          {WANT_AGAIN.map((item) => (
+            <label key={item.value} className="choice">
+              <input type="radio" name="wantAgain" value={item.value} />
+              {item.label}
             </label>
           ))}
         </div>

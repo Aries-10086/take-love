@@ -13,12 +13,21 @@ export type MomentLike = {
   tags: string[];
   wantAgain: string | null;
   happenedAt: Date;
+  pinned?: boolean;
 };
 
 export type FeedbackLike = {
   action: string;
   reasonCodes: string[];
   itemIndex: number;
+  title?: string;
+  tags?: string[];
+};
+
+export type SuggestionContext = {
+  budgetPref?: string; // low | mid | any
+  blockedTitles?: string[];
+  anniversarySoon?: boolean;
 };
 
 const TEMPLATES: SuggestionItem[] = [
@@ -76,6 +85,15 @@ const TEMPLATES: SuggestionItem[] = [
     reason: "一起动一动能换心情，也避免约会总是「坐着吃」。",
     tags: ["运动", "低负担"],
   },
+  {
+    title: "纪念日小仪式：一封短信道与一顿认真的饭",
+    detail:
+      "各自写一张短小纸条（三件感谢对方的事），交换后去吃一顿你们都喜欢的饭。不需要大礼物，重点是把心意说清楚。",
+    duration: "2小时",
+    budget: "100-250元",
+    reason: "适合纪念日前后，把仪式感做小、做实。",
+    tags: ["吃饭", "认真聊天", "仪式"],
+  },
 ];
 
 function parseJsonArray(value: string): string[] {
@@ -120,40 +138,81 @@ function shuffle<T>(items: T[]): T[] {
   return copy;
 }
 
+function budgetBand(budget: string): "low" | "mid" | "high" | "any" {
+  if (budget.includes("视事项")) return "any";
+  const nums = budget.match(/\d+/g)?.map(Number) ?? [];
+  const max = nums.length ? Math.max(...nums) : 0;
+  if (max <= 80) return "low";
+  if (max <= 180) return "mid";
+  return "high";
+}
+
 export function generateSuggestions(
   moments: MomentLike[],
   feedbacks: FeedbackLike[] = [],
+  context: SuggestionContext = {},
 ): SuggestionItem[] {
   const recent = moments.slice(0, 20);
   const tagCount = new Map<string, number>();
   const moodCount = new Map<string, number>();
+  const pinnedTags = new Set<string>();
   let wantAgainCount = 0;
+  let wantNoCount = 0;
   let indoorBias = 0;
   let outdoorBias = 0;
 
   for (const m of recent) {
     moodCount.set(m.mood, (moodCount.get(m.mood) ?? 0) + 1);
     if (m.wantAgain === "yes") wantAgainCount += 1;
+    if (m.wantAgain === "no") wantNoCount += 1;
     for (const tag of m.tags) {
       tagCount.set(tag, (tagCount.get(tag) ?? 0) + 1);
+      if (m.pinned) pinnedTags.add(tag);
       if (["在家", "电影", "吃饭"].includes(tag)) indoorBias += 1;
       if (["散步", "旅行", "运动"].includes(tag)) outdoorBias += 1;
     }
   }
 
   const dislikedTags = new Set<string>();
+  const likedTags = new Set<string>();
+  const blockedTitles = new Set(
+    (context.blockedTitles ?? []).map((t) => t.trim().toLowerCase()),
+  );
+
   for (const fb of feedbacks) {
     if (fb.action === "dislike") {
       for (const code of fb.reasonCodes) {
-        if (code === "tired") dislikedTags.add("运动");
-        if (code === "expensive") dislikedTags.add("旅行");
+        if (code === "tired") {
+          dislikedTags.add("运动");
+          dislikedTags.add("户外");
+        }
+        if (code === "expensive") {
+          dislikedTags.add("旅行");
+          dislikedTags.add("仪式");
+        }
+        if (code === "far") {
+          dislikedTags.add("户外");
+          dislikedTags.add("旅行");
+        }
+        if (code === "plain") dislikedTags.add("低负担");
+        if (code === "done" || code === "unfit") {
+          for (const tag of fb.tags ?? []) dislikedTags.add(tag);
+        }
       }
+      if (fb.title) blockedTitles.add(fb.title.trim().toLowerCase());
+    }
+    if (fb.action === "like" || fb.action === "adopt") {
+      for (const tag of fb.tags ?? []) likedTags.add(tag);
     }
   }
 
   const scored = TEMPLATES.map((item) => {
     let score = 1;
     const reasons: string[] = [];
+
+    if (blockedTitles.has(item.title.trim().toLowerCase())) {
+      score -= 8;
+    }
 
     if (indoorBias >= 3 && outdoorBias <= 1 && item.tags.includes("户外")) {
       score += 3;
@@ -163,6 +222,9 @@ export function generateSuggestions(
       score += 2;
       reasons.push("你们有过「想再来一次」的标记，这条延续了熟悉又好完成的感觉");
     }
+    if (wantNoCount >= 2 && item.tags.some((t) => (tagCount.get(t) ?? 0) >= 2)) {
+      score -= 2;
+    }
     if ((moodCount.get("tired") ?? 0) >= 2 && item.tags.includes("低负担")) {
       score += 3;
       reasons.push("最近记录里有疲惫感，所以优先低负担安排");
@@ -171,9 +233,30 @@ export function generateSuggestions(
       score += 2;
       reasons.push("最近很少认真吃饭相关的记录，补一顿会很合适");
     }
-    if (item.tags.some((t) => dislikedTags.has(t))) {
-      score -= 3;
+    if (item.tags.some((t) => pinnedTags.has(t))) {
+      score += 3;
+      reasons.push("这条贴近你们置顶过的时刻类型");
     }
+    if (item.tags.some((t) => likedTags.has(t))) {
+      score += 2;
+      reasons.push("你们之前喜欢过类似的安排");
+    }
+    if (item.tags.some((t) => dislikedTags.has(t))) {
+      score -= 4;
+    }
+    if (context.anniversarySoon && item.tags.includes("仪式")) {
+      score += 4;
+      reasons.push("纪念日临近，适合一个小小的仪式");
+    }
+
+    const band = budgetBand(item.budget);
+    if (context.budgetPref === "low" && band === "high") score -= 4;
+    if (context.budgetPref === "low" && band === "low") {
+      score += 2;
+      reasons.push("符合你们偏省一点的预算偏好");
+    }
+    if (context.budgetPref === "mid" && band === "high") score -= 2;
+
     const overlap = item.tags.reduce((n, t) => n + (tagCount.get(t) ?? 0), 0);
     if (overlap >= 4) score -= 1;
 
@@ -186,7 +269,6 @@ export function generateSuggestions(
     return { ...item, reason, score };
   });
 
-  // Empty history: rotate templates so first runs don't feel identical
   if (recent.length === 0) {
     return shuffle(scored).slice(0, 3).map(({ score: _s, ...item }) => item);
   }

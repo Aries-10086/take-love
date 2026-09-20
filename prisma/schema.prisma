@@ -24,12 +24,14 @@ model User {
 }
 
 model Space {
-  id         String   @id @default(cuid())
-  name       String
-  inviteCode String   @unique
-  createdBy  String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id            String    @id @default(cuid())
+  name          String
+  inviteCode    String    @unique
+  createdBy     String
+  anniversaryAt DateTime?
+  budgetPref    String    @default("any") // low | mid | any
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   creator     User          @relation("SpaceCreator", fields: [createdBy], references: [id])
   members     SpaceMember[]
@@ -62,6 +64,7 @@ model Moment {
   photos       String   @default("[]") // JSON array of paths
   visibility   String   @default("shared") // shared | private
   wantAgain    String? // yes | normal | no
+  pinned       Boolean  @default(false)
   happenedAt   DateTime @default(now())
   sourcePlanId String?  @unique
   createdAt    DateTime @default(now())

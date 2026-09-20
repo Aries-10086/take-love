@@ -32,9 +32,20 @@ export const DISLIKE_REASONS = [
   { value: "done", label: "已经做过了" },
 ] as const;
 
+export const BUDGET_PREFS = [
+  { value: "any", label: "不限" },
+  { value: "low", label: "偏省（约 100 内）" },
+  { value: "mid", label: "适中（约 200 内）" },
+] as const;
+
 export type MoodValue = (typeof MOODS)[number]["value"];
 export type WantAgainValue = (typeof WANT_AGAIN)[number]["value"];
 
 export function moodLabel(value: string) {
   return MOODS.find((m) => m.value === value)?.label ?? value;
+}
+
+export function wantAgainLabel(value: string | null | undefined) {
+  if (!value) return null;
+  return WANT_AGAIN.find((item) => item.value === value)?.label ?? value;
 }

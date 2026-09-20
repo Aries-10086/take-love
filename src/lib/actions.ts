@@ -8,7 +8,7 @@ import { z } from "zod";
 import { signIn, signOut } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMembership, makeInviteCode, requireUser } from "@/lib/space";
-import { generateSuggestions, parseTags } from "@/lib/suggestions";
+import { generateSuggestions, parseSuggestionPayload, parseTags } from "@/lib/suggestions";
 
 const registerSchema = z.object({
   name: z.string().min(1).max(40),
@@ -51,7 +51,7 @@ export async function registerAction(
     await signIn("credentials", {
       email,
       password: parsed.data.password,
-      redirectTo: "/onboarding",
+      redirectTo: "/enter",
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -73,7 +73,7 @@ export async function loginAction(
     await signIn("credentials", {
       email,
       password,
-      redirectTo: "/home",
+      redirectTo: "/enter",
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -170,7 +170,7 @@ export async function joinSpaceAction(
     throw error;
   }
 
-  redirect("/home");
+  redirect("/home?joined=1");
 }
 
 export async function leaveSpaceAction() {
@@ -180,9 +180,59 @@ export async function leaveSpaceAction() {
   const membership = await getMembership(user.id);
   if (!membership) redirect("/onboarding");
 
-  await prisma.spaceMember.delete({ where: { id: membership.id } });
+  const spaceId = membership.spaceId;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.spaceMember.delete({ where: { id: membership.id } });
+    const remaining = await tx.spaceMember.count({ where: { spaceId } });
+    // Last person out: remove the empty space and cascaded content
+    if (remaining === 0) {
+      await tx.space.delete({ where: { id: spaceId } });
+    }
+  });
+
   revalidatePath("/home");
   redirect("/onboarding");
+}
+
+export async function updateSpacePrefsAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  if (!user?.id) return { error: "请先登录" };
+  const membership = await getMembership(user.id);
+  if (!membership) return { error: "请先加入空间" };
+
+  const name = String(formData.get("name") ?? "").trim();
+  const budgetPref = String(formData.get("budgetPref") ?? "any");
+  const anniversaryRaw = String(formData.get("anniversaryAt") ?? "");
+
+  if (!name) return { error: "空间名称不能为空" };
+  if (name.length > 40) return { error: "名称请控制在 40 字以内" };
+  if (!["any", "low", "mid"].includes(budgetPref)) {
+    return { error: "预算偏好不合法" };
+  }
+
+  await prisma.space.update({
+    where: { id: membership.spaceId },
+    data: {
+      name,
+      budgetPref,
+      anniversaryAt: anniversaryRaw ? new Date(anniversaryRaw) : null,
+    },
+  });
+  revalidatePath("/home");
+  revalidatePath("/settings");
+  return { success: "空间设置已更新" };
+}
+
+/** @deprecated use updateSpacePrefsAction */
+export async function renameSpaceAction(
+  prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  return updateSpacePrefsAction(prev, formData);
 }
 
 export async function resetInviteCodeAction(
@@ -250,7 +300,7 @@ export async function createMomentAction(
   });
 
   revalidatePath("/home");
-  redirect("/home");
+  redirect("/home?saved=1");
 }
 
 export async function updateMomentAction(
@@ -312,20 +362,50 @@ export async function deleteMomentAction(momentId: string) {
   redirect("/home");
 }
 
+export async function togglePinMomentAction(momentId: string) {
+  const user = await requireUser();
+  if (!user?.id) return;
+  const membership = await getMembership(user.id);
+  if (!membership) return;
+
+  const moment = await prisma.moment.findFirst({
+    where: {
+      id: momentId,
+      spaceId: membership.spaceId,
+      OR: [{ visibility: "shared" }, { authorId: user.id }],
+    },
+  });
+  if (!moment) return;
+
+  await prisma.moment.update({
+    where: { id: moment.id },
+    data: { pinned: !moment.pinned },
+  });
+  revalidatePath("/home");
+  revalidatePath(`/moments/${moment.id}`);
+}
+
 export async function generateSuggestionAction() {
   const user = await requireUser();
   if (!user?.id) redirect("/login");
   const membership = await getMembership(user.id);
   if (!membership) redirect("/onboarding");
 
-  // Only shared moments — private notes must never shape partner-visible suggestions
+  const space = membership.space;
+
   const moments = await prisma.moment.findMany({
     where: {
       spaceId: membership.spaceId,
       visibility: "shared",
     },
-    orderBy: { happenedAt: "desc" },
-    take: 20,
+    orderBy: [{ pinned: "desc" }, { happenedAt: "desc" }],
+    take: 30,
+  });
+
+  const openPlans = await prisma.plan.findMany({
+    where: { spaceId: membership.spaceId, status: { in: ["proposed", "completed"] } },
+    select: { title: true },
+    take: 40,
   });
 
   const recentSuggestions = await prisma.suggestion.findMany({
@@ -335,13 +415,28 @@ export async function generateSuggestionAction() {
     include: { feedbacks: true },
   });
 
-  const feedbacks = recentSuggestions.flatMap((s) =>
-    s.feedbacks.map((f) => ({
-      action: f.action,
-      reasonCodes: parseTags(f.reasonCodes),
-      itemIndex: f.itemIndex,
-    })),
-  );
+  const feedbacks = recentSuggestions.flatMap((s) => {
+    const items = parseSuggestionPayload(s.payload);
+    return s.feedbacks.map((f) => {
+      const item = items[f.itemIndex];
+      return {
+        action: f.action,
+        reasonCodes: parseTags(f.reasonCodes),
+        itemIndex: f.itemIndex,
+        title: item?.title,
+        tags: item?.tags ?? [],
+      };
+    });
+  });
+
+  let anniversarySoon = false;
+  if (space.anniversaryAt) {
+    const now = new Date();
+    const ann = new Date(space.anniversaryAt);
+    const thisYear = new Date(now.getFullYear(), ann.getMonth(), ann.getDate());
+    const diff = Math.abs(thisYear.getTime() - now.getTime()) / 86400000;
+    anniversarySoon = diff <= 14;
+  }
 
   const items = generateSuggestions(
     moments.map((m) => ({
@@ -350,8 +445,14 @@ export async function generateSuggestionAction() {
       tags: parseTags(m.tags),
       wantAgain: m.wantAgain,
       happenedAt: m.happenedAt,
+      pinned: m.pinned,
     })),
     feedbacks,
+    {
+      budgetPref: space.budgetPref,
+      blockedTitles: openPlans.map((p) => p.title),
+      anniversarySoon,
+    },
   );
 
   const suggestion = await prisma.suggestion.create({
@@ -359,7 +460,7 @@ export async function generateSuggestionAction() {
       spaceId: membership.spaceId,
       createdBy: user.id,
       payload: JSON.stringify(items),
-      modelVersion: "rule_v0",
+      modelVersion: "rule_v1",
     },
   });
 
@@ -388,15 +489,33 @@ export async function feedbackSuggestionAction(
   });
   if (!suggestion) return { error: "建议不存在" };
 
-  await prisma.suggestionFeedback.create({
-    data: {
+  const existing = await prisma.suggestionFeedback.findFirst({
+    where: {
       suggestionId,
       userId: user.id,
       itemIndex,
-      action,
-      reasonCodes: JSON.stringify(reasons),
     },
   });
+
+  if (existing) {
+    await prisma.suggestionFeedback.update({
+      where: { id: existing.id },
+      data: {
+        action,
+        reasonCodes: JSON.stringify(reasons),
+      },
+    });
+  } else {
+    await prisma.suggestionFeedback.create({
+      data: {
+        suggestionId,
+        userId: user.id,
+        itemIndex,
+        action,
+        reasonCodes: JSON.stringify(reasons),
+      },
+    });
+  }
 
   revalidatePath("/suggestions");
   return { success: action === "like" ? "已记下喜欢" : "已记下反馈，下次会少推这类" };
@@ -417,6 +536,7 @@ export async function adoptSuggestionAction(
   const detail = String(formData.get("detail") ?? "").trim();
   const duration = String(formData.get("duration") ?? "");
   const budget = String(formData.get("budget") ?? "");
+  const scheduledAtRaw = String(formData.get("scheduledAt") ?? "");
 
   if (!title || !detail) return { error: "标题和详情不能为空" };
 
@@ -428,7 +548,6 @@ export async function adoptSuggestionAction(
   const existingOpen = await prisma.plan.findFirst({
     where: {
       spaceId: membership.spaceId,
-      suggestionId,
       title,
       status: "proposed",
     },
@@ -437,15 +556,29 @@ export async function adoptSuggestionAction(
     redirect("/plans");
   }
 
-  await prisma.suggestionFeedback.create({
-    data: {
+  const existingFeedback = await prisma.suggestionFeedback.findFirst({
+    where: {
       suggestionId,
       userId: user.id,
       itemIndex,
-      action: "adopt",
-      reasonCodes: "[]",
     },
   });
+  if (existingFeedback) {
+    await prisma.suggestionFeedback.update({
+      where: { id: existingFeedback.id },
+      data: { action: "adopt", reasonCodes: "[]" },
+    });
+  } else {
+    await prisma.suggestionFeedback.create({
+      data: {
+        suggestionId,
+        userId: user.id,
+        itemIndex,
+        action: "adopt",
+        reasonCodes: "[]",
+      },
+    });
+  }
 
   await prisma.plan.create({
     data: {
@@ -455,6 +588,7 @@ export async function adoptSuggestionAction(
       detail,
       duration: duration || null,
       budget: budget || null,
+      scheduledAt: scheduledAtRaw ? new Date(scheduledAtRaw) : null,
       createdBy: user.id,
       status: "proposed",
     },
@@ -462,6 +596,63 @@ export async function adoptSuggestionAction(
 
   revalidatePath("/plans");
   redirect("/plans");
+}
+
+export async function createPlanAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  if (!user?.id) return { error: "请先登录" };
+  const membership = await getMembership(user.id);
+  if (!membership) return { error: "请先加入空间" };
+
+  const title = String(formData.get("title") ?? "").trim();
+  const detail = String(formData.get("detail") ?? "").trim();
+  const scheduledAtRaw = String(formData.get("scheduledAt") ?? "");
+
+  if (!title) return { error: "写一个约会标题" };
+  if (!detail) return { error: "简单写一下打算怎么做" };
+
+  await prisma.plan.create({
+    data: {
+      spaceId: membership.spaceId,
+      title,
+      detail,
+      scheduledAt: scheduledAtRaw ? new Date(scheduledAtRaw) : null,
+      createdBy: user.id,
+      status: "proposed",
+    },
+  });
+
+  revalidatePath("/plans");
+  redirect("/plans");
+}
+
+export async function updatePlanScheduleAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  if (!user?.id) return { error: "请先登录" };
+  const membership = await getMembership(user.id);
+  if (!membership) return { error: "请先加入空间" };
+
+  const planId = String(formData.get("planId") ?? "");
+  const scheduledAtRaw = String(formData.get("scheduledAt") ?? "");
+
+  const plan = await prisma.plan.findFirst({
+    where: { id: planId, spaceId: membership.spaceId, status: "proposed" },
+  });
+  if (!plan) return { error: "约会不存在或已处理" };
+
+  await prisma.plan.update({
+    where: { id: plan.id },
+    data: { scheduledAt: scheduledAtRaw ? new Date(scheduledAtRaw) : null },
+  });
+  revalidatePath("/plans");
+  revalidatePath("/home");
+  return { success: scheduledAtRaw ? "已更新约会时间" : "已清除约会时间" };
 }
 
 export async function completePlanAction(
@@ -476,6 +667,8 @@ export async function completePlanAction(
   const planId = String(formData.get("planId") ?? "");
   const note = String(formData.get("note") ?? "").trim();
   const mood = String(formData.get("mood") ?? "happy");
+  const wantAgain = String(formData.get("wantAgain") ?? "") || null;
+  const happenedAtRaw = String(formData.get("happenedAt") ?? "");
 
   const plan = await prisma.plan.findFirst({
     where: { id: planId, spaceId: membership.spaceId, status: "proposed" },
@@ -486,29 +679,36 @@ export async function completePlanAction(
     note ||
     `完成了「${plan.title}」。${plan.detail.slice(0, 80)}${plan.detail.length > 80 ? "…" : ""}`;
 
-  await prisma.$transaction(async (tx) => {
+  const happenedAt = happenedAtRaw
+    ? new Date(happenedAtRaw)
+    : plan.scheduledAt ?? new Date();
+
+  const tags = ["约会回流"];
+  if (plan.budget) tags.push("约会");
+
+  const moment = await prisma.$transaction(async (tx) => {
     await tx.plan.update({
       where: { id: plan.id },
       data: { status: "completed", completedAt: new Date() },
     });
-    await tx.moment.create({
+    return tx.moment.create({
       data: {
         spaceId: membership.spaceId,
         authorId: user.id,
         content,
         mood,
-        tags: JSON.stringify(["约会回流"]),
+        tags: JSON.stringify(tags),
         visibility: "shared",
-        wantAgain: "yes",
+        wantAgain,
         sourcePlanId: plan.id,
-        happenedAt: new Date(),
+        happenedAt,
       },
     });
   });
 
   revalidatePath("/plans");
   revalidatePath("/home");
-  redirect("/home");
+  redirect(`/home?settled=1&moment=${moment.id}`);
 }
 
 export async function cancelPlanAction(planId: string) {

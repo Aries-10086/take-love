@@ -1,11 +1,18 @@
+import { format } from "date-fns";
 import { redirect } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { AppNav } from "@/components/app-nav";
 import { CopyInviteButton } from "@/components/copy-invite";
 import { LeaveSpaceButton } from "@/components/leave-space";
 import { StatusSubmit } from "@/components/status-submit";
-import { logoutAction, resetInviteCodeAction } from "@/lib/actions";
+import {
+  logoutAction,
+  resetInviteCodeAction,
+  updateSpacePrefsAction,
+} from "@/lib/actions";
 import { auth } from "@/lib/auth";
+import { BUDGET_PREFS } from "@/lib/constants";
+import { prisma } from "@/lib/prisma";
 import { getMembership } from "@/lib/space";
 
 export default async function SettingsPage() {
@@ -18,6 +25,14 @@ export default async function SettingsPage() {
   const canReset =
     membership.role === "owner" || membership.space.createdBy === session.user.id;
 
+  const openPlanCount = await prisma.plan.count({
+    where: { spaceId: membership.spaceId, status: "proposed" },
+  });
+
+  const anniversaryValue = membership.space.anniversaryAt
+    ? format(membership.space.anniversaryAt, "yyyy-MM-dd")
+    : "";
+
   return (
     <main className="shell">
       <div className="page-head">
@@ -26,35 +41,75 @@ export default async function SettingsPage() {
             捡爱 <span>我们</span>
           </p>
           <h1>空间与账号</h1>
-          <p className="lede">邀请另一半，或暂时退出当前空间。</p>
+          <p className="lede">纪念日、预算偏好、邀请另一半。</p>
         </div>
       </div>
 
       <section className="panel stack">
-        <div>
-          <p className="week-note" style={{ marginBottom: "0.35rem" }}>
-            当前空间
-          </p>
-          <h2 className="brand" style={{ margin: 0, fontSize: "1.4rem" }}>
-            {membership.space.name}
-          </h2>
-        </div>
+        <ActionForm
+          action={updateSpacePrefsAction}
+          submitLabel="保存设置"
+          submitClassName="btn btn-primary"
+        >
+          <div className="field">
+            <label htmlFor="name">空间名称</label>
+            <input
+              id="name"
+              name="name"
+              defaultValue={membership.space.name}
+              maxLength={40}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="anniversaryAt">在一起的纪念日</label>
+            <input
+              id="anniversaryAt"
+              name="anniversaryAt"
+              type="date"
+              defaultValue={anniversaryValue}
+            />
+          </div>
+          <div className="field">
+            <label>约会预算偏好</label>
+            <div className="choice-row">
+              {BUDGET_PREFS.map((item) => (
+                <label key={item.value} className="choice">
+                  <input
+                    type="radio"
+                    name="budgetPref"
+                    value={item.value}
+                    defaultChecked={
+                      (membership.space.budgetPref || "any") === item.value
+                    }
+                  />
+                  {item.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        </ActionForm>
 
         <div>
           <p className="week-note" style={{ marginBottom: "0.35rem" }}>
             邀请码（给另一半）
           </p>
           <p className="invite-code">{membership.space.inviteCode}</p>
-          <div className="inline-actions" style={{ marginTop: "0.75rem" }}>
-            <CopyInviteButton code={membership.space.inviteCode} />
-            {canReset ? (
+          <div style={{ marginTop: "0.75rem" }}>
+            <CopyInviteButton
+              code={membership.space.inviteCode}
+              spaceName={membership.space.name}
+            />
+          </div>
+          {canReset ? (
+            <div style={{ marginTop: "0.5rem" }}>
               <ActionForm
                 action={resetInviteCodeAction}
                 submitLabel="重置邀请码"
                 submitClassName="btn btn-ghost"
               />
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
 
         <div>
@@ -71,11 +126,11 @@ export default async function SettingsPage() {
       <section className="stack" style={{ marginTop: "1rem" }}>
         <LeaveSpaceButton />
         <form action={logoutAction}>
-          <StatusSubmit label="退出登录" className="btn btn-primary btn-block" />
+          <StatusSubmit label="退出登录" className="btn btn-ghost btn-block" />
         </form>
       </section>
 
-      <AppNav current="/settings" />
+      <AppNav current="/settings" openPlanCount={openPlanCount} />
     </main>
   );
 }
