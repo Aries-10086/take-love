@@ -13,7 +13,7 @@ export default async function LoginPage() {
   }
 
   return (
-    <main className="shell">
+    <main className="auth-shell">
       <div className="page-head">
         <div>
           <p className="brand-mark">
@@ -41,7 +41,7 @@ export default async function LoginPage() {
         </ActionForm>
       </div>
 
-      <p className="week-note" style={{ marginTop: "1rem" }}>
+      <p className="week-note" style={{ marginTop: "1.15rem" }}>
         还没有账号？ <Link href="/register">注册</Link>
       </p>
     </main>

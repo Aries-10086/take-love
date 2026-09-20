@@ -16,14 +16,17 @@ export default async function LandingPage() {
         <div className="landing-visual-shade" />
       </div>
       <section className="landing-copy shell">
+        <p className="landing-eyebrow">只属于两个人的空间</p>
         <h1 className="landing-brand">
           捡爱
           <span>Jian Ai</span>
         </h1>
-        <p className="landing-line">记下相爱的时刻，再一起决定下一次约会。</p>
+        <p className="landing-line">
+          记下相爱的时刻，再一起决定下一次约会。没有广场，没有噪音，只有你们。
+        </p>
         <div className="hero-actions">
-          <Link className="btn btn-primary" href="/register">
-            开始记录
+          <Link className="btn btn-accent" href="/register">
+            开始我们的空间
           </Link>
           <Link className="btn btn-ghost" href="/login">
             已有账号

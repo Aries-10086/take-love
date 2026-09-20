@@ -12,7 +12,7 @@ export default async function OnboardingPage() {
   if (membership) redirect("/home");
 
   return (
-    <main className="shell">
+    <main className="auth-shell" style={{ width: "min(520px, calc(100% - 2rem))" }}>
       <div className="page-head">
         <div>
           <p className="brand-mark">
@@ -55,7 +55,7 @@ export default async function OnboardingPage() {
                 id="inviteCode"
                 name="inviteCode"
                 placeholder="6 位邀请码"
-                maxLength={8}
+                maxLength={6}
                 style={{ textTransform: "uppercase", letterSpacing: "0.12em" }}
               />
             </div>

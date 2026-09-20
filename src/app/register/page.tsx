@@ -13,7 +13,7 @@ export default async function RegisterPage() {
   }
 
   return (
-    <main className="shell">
+    <main className="auth-shell">
       <div className="page-head">
         <div>
           <p className="brand-mark">
@@ -28,7 +28,7 @@ export default async function RegisterPage() {
         <ActionForm
           action={registerAction}
           submitLabel="注册并进入"
-          submitClassName="btn btn-primary btn-block"
+          submitClassName="btn btn-accent btn-block"
         >
           <div className="field">
             <label htmlFor="name">昵称</label>
@@ -45,7 +45,7 @@ export default async function RegisterPage() {
         </ActionForm>
       </div>
 
-      <p className="week-note" style={{ marginTop: "1rem" }}>
+      <p className="week-note" style={{ marginTop: "1.15rem" }}>
         已有账号？ <Link href="/login">登录</Link>
       </p>
     </main>
