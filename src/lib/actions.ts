@@ -8,7 +8,7 @@ import { z } from "zod";
 import { signIn, signOut } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMembership, makeInviteCode, requireUser } from "@/lib/space";
-import { generateSuggestions, parseSuggestionPayload, parseTags } from "@/lib/suggestions";
+import { generateSuggestions, parseSuggestionPayload, parseTags, isAnniversarySoon, anniversaryRitualItem } from "@/lib/suggestions";
 
 const registerSchema = z.object({
   name: z.string().min(1).max(40),
@@ -429,14 +429,7 @@ export async function generateSuggestionAction() {
     });
   });
 
-  let anniversarySoon = false;
-  if (space.anniversaryAt) {
-    const now = new Date();
-    const ann = new Date(space.anniversaryAt);
-    const thisYear = new Date(now.getFullYear(), ann.getMonth(), ann.getDate());
-    const diff = Math.abs(thisYear.getTime() - now.getTime()) / 86400000;
-    anniversarySoon = diff <= 14;
-  }
+  let anniversarySoon = isAnniversarySoon(space.anniversaryAt);
 
   const items = generateSuggestions(
     moments.map((m) => ({
@@ -598,6 +591,133 @@ export async function adoptSuggestionAction(
   redirect("/plans");
 }
 
+/** 从「想再来」的时刻，生成一批延续该类型的下次约会建议 */
+export async function remixWantAgainAction(formData: FormData) {
+  const user = await requireUser();
+  if (!user?.id) redirect("/login");
+  const membership = await getMembership(user.id);
+  if (!membership) redirect("/onboarding");
+
+  const momentId = String(formData.get("momentId") ?? "");
+  const moment = await prisma.moment.findFirst({
+    where: {
+      id: momentId,
+      spaceId: membership.spaceId,
+      visibility: "shared",
+      wantAgain: "yes",
+    },
+  });
+  if (!moment) redirect("/home");
+
+  const seedTags = parseTags(moment.tags);
+  const snippet = moment.content.slice(0, 36);
+
+  const openPlans = await prisma.plan.findMany({
+    where: { spaceId: membership.spaceId, status: { in: ["proposed", "completed"] } },
+    select: { title: true },
+    take: 40,
+  });
+
+  const recentSuggestions = await prisma.suggestion.findMany({
+    where: { spaceId: membership.spaceId },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+    include: { feedbacks: true },
+  });
+
+  const feedbacks = recentSuggestions.flatMap((s) => {
+    const items = parseSuggestionPayload(s.payload);
+    return s.feedbacks.map((f) => {
+      const item = items[f.itemIndex];
+      return {
+        action: f.action,
+        reasonCodes: parseTags(f.reasonCodes),
+        itemIndex: f.itemIndex,
+        title: item?.title,
+        tags: item?.tags ?? [],
+      };
+    });
+  });
+
+  const sharedMoments = await prisma.moment.findMany({
+    where: { spaceId: membership.spaceId, visibility: "shared" },
+    orderBy: [{ pinned: "desc" }, { happenedAt: "desc" }],
+    take: 30,
+  });
+
+  const items = generateSuggestions(
+    sharedMoments.map((m) => ({
+      content: m.content,
+      mood: m.mood,
+      tags: parseTags(m.tags),
+      wantAgain: m.wantAgain,
+      happenedAt: m.happenedAt,
+      pinned: m.pinned,
+    })),
+    feedbacks,
+    {
+      budgetPref: membership.space.budgetPref,
+      blockedTitles: openPlans.map((p) => p.title),
+      anniversarySoon: isAnniversarySoon(membership.space.anniversaryAt),
+      seedTags,
+      seedReason: `延续你们标记过「想再来」的那段：「${snippet}${moment.content.length > 36 ? "…" : ""}」`,
+    },
+  );
+
+  const suggestion = await prisma.suggestion.create({
+    data: {
+      spaceId: membership.spaceId,
+      createdBy: user.id,
+      payload: JSON.stringify(items),
+      modelVersion: "rule_v1_remix",
+    },
+  });
+
+  revalidatePath("/suggestions");
+  revalidatePath("/home");
+  redirect(`/suggestions?id=${suggestion.id}&remix=1`);
+}
+
+/** 纪念日临近时，一键把仪式模板放进约会待办 */
+export async function createAnniversaryPlanAction() {
+  const user = await requireUser();
+  if (!user?.id) redirect("/login");
+  const membership = await getMembership(user.id);
+  if (!membership) redirect("/onboarding");
+
+  if (!isAnniversarySoon(membership.space.anniversaryAt)) {
+    redirect("/settings");
+  }
+
+  const ritual = anniversaryRitualItem();
+  const existing = await prisma.plan.findFirst({
+    where: {
+      spaceId: membership.spaceId,
+      title: ritual.title,
+      status: "proposed",
+    },
+  });
+  if (existing) {
+    redirect("/plans");
+  }
+
+  await prisma.plan.create({
+    data: {
+      spaceId: membership.spaceId,
+      title: ritual.title,
+      detail: ritual.detail,
+      duration: ritual.duration,
+      budget: ritual.budget,
+      createdBy: user.id,
+      status: "proposed",
+    },
+  });
+
+  revalidatePath("/plans");
+  revalidatePath("/home");
+  redirect("/plans");
+}
+
 export async function createPlanAction(
   _prev: ActionState,
   formData: FormData,
@@ -722,4 +842,114 @@ export async function cancelPlanAction(planId: string) {
     data: { status: "cancelled" },
   });
   revalidatePath("/plans");
+}
+
+export async function createSyncQuestionAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  if (!user?.id) return { error: "请先登录" };
+  const membership = await getMembership(user.id);
+  if (!membership) return { error: "请先加入空间" };
+
+  const prompt = String(formData.get("prompt") ?? "").trim();
+  if (!prompt) return { error: "先写一个问题" };
+  if (prompt.length > 120) return { error: "问题请控制在 120 字内" };
+
+  await prisma.syncQuestion.create({
+    data: {
+      spaceId: membership.spaceId,
+      prompt,
+      createdBy: user.id,
+    },
+  });
+  revalidatePath("/magic");
+  return { success: "默契题已发出，等双方都回答后揭晓" };
+}
+
+export async function answerSyncQuestionAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  if (!user?.id) return { error: "请先登录" };
+  const membership = await getMembership(user.id);
+  if (!membership) return { error: "请先加入空间" };
+
+  const questionId = String(formData.get("questionId") ?? "");
+  const answer = String(formData.get("answer") ?? "").trim();
+  if (!answer) return { error: "写一下你的答案" };
+  if (answer.length > 80) return { error: "答案请控制在 80 字内" };
+
+  const question = await prisma.syncQuestion.findFirst({
+    where: { id: questionId, spaceId: membership.spaceId },
+  });
+  if (!question) return { error: "问题不存在" };
+
+  const existing = await prisma.syncAnswer.findUnique({
+    where: {
+      questionId_userId: { questionId, userId: user.id },
+    },
+  });
+  if (existing) {
+    await prisma.syncAnswer.update({
+      where: { id: existing.id },
+      data: { answer },
+    });
+  } else {
+    await prisma.syncAnswer.create({
+      data: { questionId, userId: user.id, answer },
+    });
+  }
+
+  revalidatePath("/magic");
+  return { success: "答案已提交（对方回答前不会看到）" };
+}
+
+export async function createSurpriseNoteAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  if (!user?.id) return { error: "请先登录" };
+  const membership = await getMembership(user.id);
+  if (!membership) return { error: "请先加入空间" };
+
+  const content = String(formData.get("content") ?? "").trim();
+  if (!content) return { error: "写一句想给 TA 的话" };
+  if (content.length > 200) return { error: "请控制在 200 字内" };
+
+  await prisma.surpriseNote.create({
+    data: {
+      spaceId: membership.spaceId,
+      authorId: user.id,
+      content,
+    },
+  });
+  revalidatePath("/magic");
+  return { success: "惊喜便签已藏好，等 TA 来拆" };
+}
+
+export async function revealSurpriseNoteAction(noteId: string) {
+  const user = await requireUser();
+  if (!user?.id) return;
+  const membership = await getMembership(user.id);
+  if (!membership) return;
+
+  const note = await prisma.surpriseNote.findFirst({
+    where: {
+      id: noteId,
+      spaceId: membership.spaceId,
+      isRevealed: false,
+      NOT: { authorId: user.id },
+    },
+  });
+  if (!note) return;
+
+  await prisma.surpriseNote.update({
+    where: { id: note.id },
+    data: { isRevealed: true, revealedAt: new Date() },
+  });
+  revalidatePath("/magic");
 }

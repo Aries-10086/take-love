@@ -76,6 +76,10 @@ export function CoupleHero({
             <span className="couple-action-desc">下次一起做什么</span>
           </button>
         </form>
+        <Link className="couple-action" href="/magic">
+          <span className="couple-action-title">玩法</span>
+          <span className="couple-action-desc">抽签 · 报告 · 默契</span>
+        </Link>
         <Link className="couple-action" href="/plans">
           <span className="couple-action-title">约会</span>
           <span className="couple-action-desc">

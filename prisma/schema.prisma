@@ -21,6 +21,9 @@ model User {
   suggestionFeedbacks  SuggestionFeedback[]
   plans                Plan[]
   createdSpaces        Space[]               @relation("SpaceCreator")
+  syncQuestions        SyncQuestion[]
+  syncAnswers          SyncAnswer[]
+  surpriseNotes        SurpriseNote[]
 }
 
 model Space {
@@ -38,6 +41,8 @@ model Space {
   moments     Moment[]
   suggestions Suggestion[]
   plans       Plan[]
+  syncQuestions SyncQuestion[]
+  surpriseNotes SurpriseNote[]
 }
 
 model SpaceMember {
@@ -121,4 +126,42 @@ model Plan {
   suggestion Suggestion? @relation(fields: [suggestionId], references: [id])
   creator    User        @relation(fields: [createdBy], references: [id])
   moment     Moment?
+}
+
+model SyncQuestion {
+  id        String   @id @default(cuid())
+  spaceId   String
+  prompt    String
+  createdBy String
+  createdAt DateTime @default(now())
+
+  space   Space        @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  creator User         @relation(fields: [createdBy], references: [id])
+  answers SyncAnswer[]
+}
+
+model SyncAnswer {
+  id         String   @id @default(cuid())
+  questionId String
+  userId     String
+  answer     String
+  createdAt  DateTime @default(now())
+
+  question SyncQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id])
+
+  @@unique([questionId, userId])
+}
+
+model SurpriseNote {
+  id         String    @id @default(cuid())
+  spaceId    String
+  authorId   String
+  content    String
+  isRevealed Boolean   @default(false)
+  revealedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  space  Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  author User  @relation(fields: [authorId], references: [id])
 }

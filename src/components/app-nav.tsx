@@ -2,6 +2,7 @@ import Link from "next/link";
 
 const links = [
   { href: "/home", label: "时光" },
+  { href: "/magic", label: "玩法" },
   { href: "/suggestions", label: "建议" },
   { href: "/plans", label: "约会", badgeKey: "plans" as const },
   { href: "/settings", label: "我们" },
@@ -15,7 +16,7 @@ export function AppNav({
   openPlanCount?: number;
 }) {
   return (
-    <nav className="app-nav" aria-label="主导航">
+    <nav className="app-nav app-nav-5" aria-label="主导航">
       {links.map((link) => {
         const showBadge = link.badgeKey === "plans" && openPlanCount > 0;
         return (

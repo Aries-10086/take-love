@@ -28,7 +28,31 @@ export type SuggestionContext = {
   budgetPref?: string; // low | mid | any
   blockedTitles?: string[];
   anniversarySoon?: boolean;
+  /** 从「想再来」时刻带入的标签，强加权 */
+  seedTags?: string[];
+  seedReason?: string;
 };
+
+/** 距今年纪念日还有几天；已过则看明年。无日期返回 null。 */
+export function daysUntilAnniversary(anniversaryAt: Date, now = new Date()) {
+  const ann = new Date(anniversaryAt);
+  let next = new Date(now.getFullYear(), ann.getMonth(), ann.getDate());
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (next.getTime() < startToday.getTime()) {
+    next = new Date(now.getFullYear() + 1, ann.getMonth(), ann.getDate());
+  }
+  return Math.round((next.getTime() - startToday.getTime()) / 86400000);
+}
+
+export function isAnniversarySoon(anniversaryAt: Date | null | undefined, windowDays = 14) {
+  if (!anniversaryAt) return false;
+  const days = daysUntilAnniversary(anniversaryAt);
+  return days >= 0 && days <= windowDays;
+}
+
+export function anniversaryRitualItem(): SuggestionItem {
+  return { ...TEMPLATES.find((t) => t.tags.includes("仪式"))! };
+}
 
 const TEMPLATES: SuggestionItem[] = [
   {
@@ -247,6 +271,14 @@ export function generateSuggestions(
     if (context.anniversarySoon && item.tags.includes("仪式")) {
       score += 4;
       reasons.push("纪念日临近，适合一个小小的仪式");
+    }
+
+    const seedTags = context.seedTags ?? [];
+    if (seedTags.length > 0 && item.tags.some((t) => seedTags.includes(t))) {
+      score += 5;
+      reasons.push(
+        context.seedReason ?? "这条延续了你们标记过「想再来」的相处类型",
+      );
     }
 
     const band = budgetBand(item.budget);

@@ -387,6 +387,13 @@ summary:focus-visible {
   font-weight: 500;
 }
 
+.field-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
 .field input,
 .field textarea,
 .field select {
@@ -493,6 +500,15 @@ summary:focus-visible {
   z-index: 20;
 }
 
+.app-nav-5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.app-nav-5 a {
+  font-size: 0.8rem;
+  padding: 0.7rem 0.2rem;
+}
+
 .app-nav a {
   text-align: center;
   padding: 0.75rem 0.35rem;
@@ -561,6 +577,141 @@ summary:focus-visible {
 .loop-banner p {
   margin: 0;
   max-width: 28rem;
+}
+
+/* —— Quality home cards —— */
+.quality-card,
+.weekly-letter {
+  margin-bottom: 1.2rem;
+  padding: 1.25rem 1.3rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(160deg, rgba(46, 125, 122, 0.07), transparent 50%),
+    var(--glass);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-soft);
+  animation: rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.quality-card.anniversary {
+  background:
+    linear-gradient(145deg, rgba(196, 83, 102, 0.1), transparent 55%),
+    var(--glass);
+}
+
+.quality-card.overdue {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+}
+
+.quality-kicker {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.quality-title {
+  margin: 0 0 0.45rem;
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 4.5vw, 1.75rem);
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+}
+
+.quality-when {
+  margin: 0 0 0.55rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+
+.quality-body {
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+  line-height: 1.65;
+}
+
+.weekly-letter .letter-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  margin-bottom: 0.9rem;
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+}
+
+.weekly-letter .letter-body {
+  margin-bottom: 1rem;
+}
+
+.weekly-letter .letter-body p {
+  margin: 0 0 0.7rem;
+  color: var(--ink);
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.weekly-letter .letter-body p:last-child {
+  margin-bottom: 0;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+}
+
+.remix-callout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.25rem 0 0.5rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-md, 0.85rem);
+  background: color-mix(in srgb, var(--teal, #2e7d7a) 8%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--teal, #2e7d7a) 28%, var(--line));
+}
+
+.remix-callout p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  max-width: 22rem;
+}
+
+.mutual-badge,
+.partner-like-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.86rem;
+  letter-spacing: 0.04em;
+}
+
+.mutual-badge {
+  display: inline-block;
+  padding: 0.28rem 0.65rem;
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.partner-like-hint {
+  color: var(--ink-soft);
+}
+
+.suggestion-card.mutual {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background:
+    linear-gradient(150deg, rgba(196, 83, 102, 0.07), transparent 60%),
+    var(--panel, var(--glass));
+}
+
+.mutual-summary {
+  margin: -0.35rem 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--ink-soft);
+  line-height: 1.5;
 }
 
 .flash-banner {
@@ -669,6 +820,212 @@ summary:focus-visible {
   margin-bottom: 0.75rem;
   padding-bottom: 0.25rem;
   border-bottom: 1px dashed var(--line);
+}
+
+/* —— Magic / 玩法 —— */
+.magic-grid {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.magic-card {
+  padding: 1.25rem 1.2rem 1.35rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(145deg, rgba(196, 83, 102, 0.06), transparent 40%),
+    var(--glass);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-soft);
+  animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.magic-card-head h2 {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+}
+
+.magic-card-head p {
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+  line-height: 1.6;
+  font-size: 0.92rem;
+}
+
+.magic-empty {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+.lottery-stage {
+  min-height: 4.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.9rem;
+  padding: 1rem;
+  border-radius: var(--radius);
+  border: 1px dashed var(--line-strong);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.lottery-stage.spinning {
+  animation: lotteryPulse 0.35s ease-in-out infinite alternate;
+}
+
+.lottery-spin {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.lottery-result {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  animation: rise 0.45s ease both;
+}
+
+.lottery-meta {
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.lottery-content {
+  margin: 0 0 0.85rem;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  line-height: 1.7;
+}
+
+.report-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.report-stats > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.65rem 0.35rem;
+  border-radius: 0.7rem;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--line);
+  text-align: center;
+}
+
+.report-stats strong {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+
+.report-stats span {
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+.report-body {
+  margin: 0;
+  padding: 1rem;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--line);
+  white-space: pre-wrap;
+  font-family: var(--font-display);
+  font-size: 0.98rem;
+  line-height: 1.85;
+  color: var(--ink);
+}
+
+.echo-item {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+  line-height: 1.55;
+}
+
+.echo-item:last-child {
+  border-bottom: 0;
+}
+
+.echo-badge {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.45rem;
+  background: rgba(196, 83, 102, 0.12);
+  color: var(--accent-deep);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.echo-badge.soft {
+  background: rgba(20, 47, 53, 0.08);
+  color: var(--ink-soft);
+}
+
+.sync-item,
+.surprise-item {
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.sync-prompt {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+
+.sync-meta {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.sync-answers {
+  margin: 0;
+  padding-left: 1.1rem;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.surprise-content {
+  margin: 0.5rem 0 0;
+  font-family: var(--font-display);
+  font-size: 1.08rem;
+  line-height: 1.7;
+  animation: rise 0.45s ease both;
+}
+
+.surprise-seal {
+  width: 100%;
+}
+
+@keyframes lotteryPulse {
+  from {
+    transform: scale(1);
+    border-color: var(--line);
+  }
+  to {
+    transform: scale(1.01);
+    border-color: rgba(196, 83, 102, 0.45);
+  }
+}
+
+@media (max-width: 640px) {
+  .report-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 /* —— Timeline —— */
@@ -994,7 +1351,7 @@ summary:focus-visible {
 .couple-actions {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.55rem;
   margin-top: 1.25rem;
 }
