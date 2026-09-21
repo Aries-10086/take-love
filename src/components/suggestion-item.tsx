@@ -15,6 +15,9 @@ type Props = {
   index: number;
   item: SuggestionItem;
   feedbackAction?: string | null;
+  partnerAction?: string | null;
+  partnerName?: string | null;
+  hasPartner?: boolean;
 };
 
 export function SuggestionItemCard({
@@ -22,12 +25,27 @@ export function SuggestionItemCard({
   index,
   item,
   feedbackAction,
+  partnerAction,
+  partnerName,
+  hasPartner,
 }: Props) {
   const [adopting, setAdopting] = useState(false);
-  const adopted = feedbackAction === "adopt";
+  const adopted = feedbackAction === "adopt" || partnerAction === "adopt";
+  const iLike = feedbackAction === "like" || feedbackAction === "adopt";
+  const partnerLikes =
+    partnerAction === "like" || partnerAction === "adopt";
+  const mutual = Boolean(hasPartner && iLike && partnerLikes);
 
   return (
-    <article className="suggestion-card">
+    <article className={`suggestion-card${mutual ? " mutual" : ""}`}>
+      {mutual ? (
+        <p className="mutual-badge">你们都心动了</p>
+      ) : hasPartner && partnerLikes ? (
+        <p className="partner-like-hint">
+          {partnerName ?? "TA"} 也喜欢这条
+        </p>
+      ) : null}
+
       <h2>{item.title}</h2>
       <p>{item.detail}</p>
       <div className="meta-line">
@@ -48,7 +66,9 @@ export function SuggestionItemCard({
         {feedbackAction === "dislike" ? (
           <span className="chip muted">已反馈不合适</span>
         ) : null}
-        {adopted ? <span className="chip soft">已采纳</span> : null}
+        {feedbackAction === "adopt" || partnerAction === "adopt" ? (
+          <span className="chip soft">已采纳</span>
+        ) : null}
       </div>
 
       {adopted ? (
@@ -59,10 +79,14 @@ export function SuggestionItemCard({
         </div>
       ) : !adopting ? (
         <div className="inline-actions">
-          <button className="btn btn-accent" type="button" onClick={() => setAdopting(true)}>
-            就这个
+          <button
+            className="btn btn-accent"
+            type="button"
+            onClick={() => setAdopting(true)}
+          >
+            {mutual ? "订成约会" : "就这个"}
           </button>
-          {feedbackAction !== "like" ? (
+          {feedbackAction !== "like" && feedbackAction !== "adopt" ? (
             <ActionForm
               action={feedbackSuggestionAction}
               submitLabel="喜欢"

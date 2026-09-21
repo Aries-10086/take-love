@@ -69,6 +69,11 @@ export default async function SettingsPage() {
               type="date"
               defaultValue={anniversaryValue}
             />
+            {!anniversaryValue ? (
+              <p className="field-hint">
+                填上之后，临近纪念日时首页会提醒你们安排一个小仪式。
+              </p>
+            ) : null}
           </div>
           <div className="field">
             <label>约会预算偏好</label>

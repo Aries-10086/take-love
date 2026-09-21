@@ -6,6 +6,7 @@ import { ActionForm } from "@/components/action-form";
 import { AppNav } from "@/components/app-nav";
 import { DeleteMomentButton } from "@/components/delete-moment";
 import { PinMomentButton } from "@/components/pin-moment";
+import { RemixWantAgainButton } from "@/components/remix-want-again";
 import { updateMomentAction } from "@/lib/actions";
 import { auth } from "@/lib/auth";
 import { MOODS, TAGS, WANT_AGAIN, moodLabel, wantAgainLabel } from "@/lib/constants";
@@ -186,6 +187,13 @@ export default async function MomentDetailPage({
               </span>
             ))}
           </div>
+
+          {moment.wantAgain === "yes" && moment.visibility === "shared" ? (
+            <div className="remix-callout">
+              <p>你们标过「想再来」。要不要把这类相处续成下次约会？</p>
+              <RemixWantAgainButton momentId={moment.id} />
+            </div>
+          ) : null}
 
           {isAuthor ? (
             <div className="inline-actions">

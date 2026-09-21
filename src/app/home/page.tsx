@@ -1,19 +1,21 @@
 import Link from "next/link";
-import { format } from "date-fns";
-import { zhCN } from "date-fns/locale";
 import { redirect } from "next/navigation";
+import { AnniversaryBanner } from "@/components/anniversary-banner";
 import { AppNav } from "@/components/app-nav";
 import { CopyInviteButton } from "@/components/copy-invite";
 import { CoupleHero } from "@/components/couple-hero";
 import { HomeFilter } from "@/components/home-filter";
 import { HomeFlash } from "@/components/home-flash";
 import { MomentCard } from "@/components/moment-card";
+import { NextPlanCard } from "@/components/next-plan-card";
 import { StatusSubmit } from "@/components/status-submit";
+import { WeeklyLetter } from "@/components/weekly-letter";
 import { generateSuggestionAction } from "@/lib/actions";
 import { auth } from "@/lib/auth";
+import { buildLoveReport } from "@/lib/magic";
 import { prisma } from "@/lib/prisma";
 import { getMembership } from "@/lib/space";
-import { parseTags } from "@/lib/suggestions";
+import { daysUntilAnniversary, isAnniversarySoon, parseTags } from "@/lib/suggestions";
 
 export default async function HomePage({
   searchParams,
@@ -69,14 +71,20 @@ export default async function HomePage({
     orderBy: [{ scheduledAt: "asc" }, { createdAt: "desc" }],
   });
   const openPlanCount = openPlans.length;
+  const nextPlan = openPlans[0] ?? null;
 
-  const weekCompleted = await prisma.plan.count({
-    where: {
-      spaceId: membership.spaceId,
-      status: "completed",
-      completedAt: { gte: weekStart },
-    },
+  const allPlans = await prisma.plan.findMany({
+    where: { spaceId: membership.spaceId },
+    select: { title: true, status: true, completedAt: true },
+    take: 80,
   });
+
+  const weekCompleted = allPlans.filter(
+    (p) =>
+      p.status === "completed" &&
+      p.completedAt &&
+      p.completedAt >= weekStart,
+  ).length;
 
   const wantAgainWeek = moments.filter(
     (m) => m.happenedAt >= weekStart && m.wantAgain === "yes",
@@ -115,12 +123,46 @@ export default async function HomePage({
     earliestShared?.happenedAt ??
     membership.space.createdAt;
 
+  const daysTogether = Math.max(
+    1,
+    Math.round(
+      (Date.now() -
+        new Date(
+          since.getFullYear(),
+          since.getMonth(),
+          since.getDate(),
+        ).getTime()) /
+        86400000,
+    ) + 1,
+  );
+
   const pinned = filtered.filter((m) => m.pinned);
   const rest = filtered.filter((m) => !m.pinned);
 
-  const overdue = openPlans.filter(
-    (p) => p.scheduledAt && p.scheduledAt.getTime() < Date.now(),
-  );
+  const anniversarySoon = isAnniversarySoon(membership.space.anniversaryAt);
+  const anniversaryDays = membership.space.anniversaryAt
+    ? daysUntilAnniversary(membership.space.anniversaryAt)
+    : null;
+
+  const sharedForReport = moments.filter((m) => m.visibility === "shared");
+  const report =
+    sharedForReport.length > 0
+      ? buildLoveReport({
+          spaceName: membership.space.name,
+          meName: me?.user.name ?? session.user.name ?? "我",
+          partnerName: partner?.user.name,
+          daysTogether,
+          moments: sharedForReport.map((m) => ({
+            content: m.content,
+            mood: m.mood,
+            tags: m.tags,
+            wantAgain: m.wantAgain,
+            happenedAt: m.happenedAt,
+            authorName: m.author.name,
+          })),
+          plans: allPlans,
+        })
+      : null;
 
   return (
     <main className="shell">
@@ -191,20 +233,22 @@ export default async function HomePage({
         </section>
       ) : null}
 
-      {openPlanCount > 0 && !waitingPartner && !flashKind ? (
-        <section className="loop-banner">
-          <p>
-            {overdue.length > 0
-              ? `有 ${overdue.length} 个约会已过计划时间，记得完成或改期。`
-              : "你们有待完成的约会。做完后记得点完成，它会变成新的时刻。"}
-            {openPlans[0]?.scheduledAt
-              ? ` 最近一次：${format(openPlans[0].scheduledAt, "M月d日 HH:mm", { locale: zhCN })}`
-              : ""}
-          </p>
-          <Link className="btn btn-ghost" href="/plans">
-            去看看
-          </Link>
-        </section>
+      {!waitingPartner && anniversarySoon && anniversaryDays != null ? (
+        <AnniversaryBanner daysLeft={anniversaryDays} />
+      ) : null}
+
+      {!flashKind ? (
+        <NextPlanCard plan={nextPlan} partnerWaiting={waitingPartner} />
+      ) : null}
+
+      {report && !waitingPartner ? (
+        <WeeklyLetter
+          title={report.title}
+          body={report.body}
+          topTag={report.stats.topTag}
+          topMood={report.stats.topMood}
+          weekMoments={report.stats.weekMoments}
+        />
       ) : null}
 
       <div className="section-head">
