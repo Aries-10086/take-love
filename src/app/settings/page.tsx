@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { format } from "date-fns";
+import { zhCN } from "date-fns/locale";
 import { redirect } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { AppNav } from "@/components/app-nav";
 import { CopyInviteButton } from "@/components/copy-invite";
-import { LeaveSpaceButton } from "@/components/leave-space";
+import { DeleteAccountButton, LeaveSpaceButton } from "@/components/leave-space";
 import { StatusSubmit } from "@/components/status-submit";
 import {
   logoutAction,
@@ -15,15 +17,19 @@ import { BUDGET_PREFS } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { getMembership } from "@/lib/space";
 
+function initialOf(name: string) {
+  const trimmed = name.trim();
+  return trimmed ? trimmed.slice(0, 1) : "·";
+}
+
 export default async function SettingsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   const membership = await getMembership(session.user.id);
   if (!membership) redirect("/onboarding");
 
+  const me = membership.space.members.find((m) => m.userId === session.user.id);
   const partner = membership.space.members.find((m) => m.userId !== session.user.id);
-  const canReset =
-    membership.role === "owner" || membership.space.createdBy === session.user.id;
 
   const openPlanCount = await prisma.plan.count({
     where: { spaceId: membership.spaceId, status: "proposed" },
@@ -41,11 +47,43 @@ export default async function SettingsPage() {
             捡爱 <span>我们</span>
           </p>
           <h1>空间与账号</h1>
-          <p className="lede">纪念日、预算偏好、邀请另一半。</p>
+          <p className="lede">只有你们两人。纪念日、邀请、安全都在这里。</p>
         </div>
       </div>
 
-      <section className="panel stack">
+      <section className="settings-section panel stack">
+        <div className="settings-section-head">
+          <h2>我们的空间</h2>
+          <p className="trust-note" style={{ margin: 0 }}>
+            内容仅空间内双方可见，没有公开动态。
+          </p>
+        </div>
+
+        <div className="member-row">
+          <div className="member-chip">
+            <span className="member-avatar" aria-hidden="true">
+              {initialOf(me?.user.name ?? session.user.name ?? "我")}
+            </span>
+            <div>
+              <strong>{me?.user.name ?? session.user.name}</strong>
+              <span>你 · {format(me?.joinedAt ?? membership.space.createdAt, "yyyy年M月加入", { locale: zhCN })}</span>
+            </div>
+          </div>
+          <div className={`member-chip${partner ? "" : " waiting"}`}>
+            <span className="member-avatar" aria-hidden="true">
+              {partner ? initialOf(partner.user.name) : "?"}
+            </span>
+            <div>
+              <strong>{partner ? partner.user.name : "等待加入"}</strong>
+              <span>
+                {partner
+                  ? format(partner.joinedAt, "yyyy年M月加入", { locale: zhCN })
+                  : "把邀请发给另一半"}
+              </span>
+            </div>
+          </div>
+        </div>
+
         <ActionForm
           action={updateSpacePrefsAction}
           submitLabel="保存设置"
@@ -77,7 +115,7 @@ export default async function SettingsPage() {
           </div>
           <div className="field">
             <label>约会预算偏好</label>
-            <div className="choice-row">
+            <div className="choice-row" role="radiogroup" aria-label="约会预算偏好">
               {BUDGET_PREFS.map((item) => (
                 <label key={item.value} className="choice">
                   <input
@@ -94,45 +132,42 @@ export default async function SettingsPage() {
             </div>
           </div>
         </ActionForm>
-
-        <div>
-          <p className="week-note" style={{ marginBottom: "0.35rem" }}>
-            邀请码（给另一半）
-          </p>
-          <p className="invite-code">{membership.space.inviteCode}</p>
-          <div style={{ marginTop: "0.75rem" }}>
-            <CopyInviteButton
-              code={membership.space.inviteCode}
-              spaceName={membership.space.name}
-            />
-          </div>
-          {canReset ? (
-            <div style={{ marginTop: "0.5rem" }}>
-              <ActionForm
-                action={resetInviteCodeAction}
-                submitLabel="重置邀请码"
-                submitClassName="btn btn-ghost"
-              />
-            </div>
-          ) : null}
-        </div>
-
-        <div>
-          <p className="week-note" style={{ marginBottom: "0.35rem" }}>
-            成员
-          </p>
-          <p style={{ margin: 0 }}>
-            {session.user.name}（你）
-            {partner ? ` · ${partner.user.name}` : " · 还在等待另一半加入"}
-          </p>
-        </div>
       </section>
 
-      <section className="stack" style={{ marginTop: "1rem" }}>
+      <section className="settings-section panel stack">
+        <div className="settings-section-head">
+          <h2>邀请另一半</h2>
+          <p className="trust-note" style={{ margin: 0 }}>
+            最多两人。对方通过邀请码或链接加入。
+          </p>
+        </div>
+        <p className="invite-code">{membership.space.inviteCode}</p>
+        <CopyInviteButton
+          code={membership.space.inviteCode}
+          spaceName={membership.space.name}
+        />
+        <ActionForm
+          action={resetInviteCodeAction}
+          submitLabel="重置邀请码"
+          submitClassName="btn btn-ghost"
+        />
+      </section>
+
+      <section className="settings-section panel stack">
+        <div className="settings-section-head">
+          <h2>账号与安全</h2>
+          <p className="trust-note" style={{ margin: 0 }}>
+            退出空间会轮换邀请码；注销会作废登录凭证。
+          </p>
+        </div>
         <LeaveSpaceButton />
         <form action={logoutAction}>
           <StatusSubmit label="退出登录" className="btn btn-ghost btn-block" />
         </form>
+        <DeleteAccountButton />
+        <p className="trust-note" style={{ textAlign: "center" }}>
+          <Link href="/privacy">隐私说明</Link>
+        </p>
       </section>
 
       <AppNav current="/settings" openPlanCount={openPlanCount} />

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { generateSuggestionAction } from "@/lib/actions";
 
 function initialOf(name: string) {
   const trimmed = name.trim();
@@ -21,6 +20,8 @@ type Props = {
   momentCount: number;
   openPlanCount: number;
   weekNote: string;
+  /** e.g. 「小雨 3 小时前写了时刻」 */
+  presenceLine?: string | null;
 };
 
 export function CoupleHero({
@@ -31,6 +32,7 @@ export function CoupleHero({
   momentCount,
   openPlanCount,
   weekNote,
+  presenceLine,
 }: Props) {
   const days = daysBetween(since, new Date());
   const waiting = !partnerName;
@@ -59,31 +61,27 @@ export function CoupleHero({
         {waiting ? "专属空间已开启，等另一半加入" : "一起走过的日子"}
       </p>
 
+      {presenceLine ? <p className="couple-presence">{presenceLine}</p> : null}
+
       <p className="couple-meta">
         {weekNote}
         {momentCount > 0 ? ` · 共 ${momentCount} 段时刻` : ""}
-        {openPlanCount > 0 ? ` · ${openPlanCount} 个待办约会` : ""}
+        {openPlanCount > 0 ? ` · ${openPlanCount} 次约好了` : ""}
       </p>
 
-      <div className="couple-actions">
+      <div className="couple-actions couple-actions-2">
         <Link className="couple-action primary" href="/moments/new">
           <span className="couple-action-title">记一条</span>
           <span className="couple-action-desc">留下今天的相处</span>
         </Link>
-        <form action={generateSuggestionAction} className="couple-action-form">
-          <button className="couple-action" type="submit">
-            <span className="couple-action-title">要建议</span>
-            <span className="couple-action-desc">下次一起做什么</span>
-          </button>
-        </form>
-        <Link className="couple-action" href="/magic">
-          <span className="couple-action-title">玩法</span>
-          <span className="couple-action-desc">抽签 · 报告 · 默契</span>
-        </Link>
-        <Link className="couple-action" href="/plans">
-          <span className="couple-action-title">约会</span>
+        <Link className="couple-action" href={openPlanCount > 0 ? "/plans" : "/suggestions"}>
+          <span className="couple-action-title">
+            {openPlanCount > 0 ? "下一次" : "约一次"}
+          </span>
           <span className="couple-action-desc">
-            {openPlanCount > 0 ? `${openPlanCount} 个待完成` : "看看待办"}
+            {openPlanCount > 0
+              ? `${openPlanCount} 个待完成`
+              : "挑一件小事见面"}
           </span>
         </Link>
       </div>

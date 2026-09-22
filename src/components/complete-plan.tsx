@@ -61,31 +61,35 @@ export function CompletePlanPanel({ planId, defaultHappenedAt }: Props) {
         />
       </div>
       <div className="field">
-        <label>完成后的心情</label>
-        <div className="choice-row">
-          {MOODS.map((mood, index) => (
-            <label key={mood.value} className="choice">
-              <input
-                type="radio"
-                name="mood"
-                value={mood.value}
-                defaultChecked={index === 0}
-              />
-              {mood.label}
-            </label>
-          ))}
-        </div>
+        <fieldset className="choice-fieldset">
+          <legend>完成后的心情</legend>
+          <div className="choice-row">
+            {MOODS.map((mood, index) => (
+              <label key={mood.value} className="choice">
+                <input
+                  type="radio"
+                  name="mood"
+                  value={mood.value}
+                  defaultChecked={index === 0}
+                />
+                {mood.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
       </div>
       <div className="field">
-        <label>还想再来一次吗？</label>
-        <div className="choice-row">
-          {WANT_AGAIN.map((item) => (
-            <label key={item.value} className="choice">
-              <input type="radio" name="wantAgain" value={item.value} />
-              {item.label}
-            </label>
-          ))}
-        </div>
+        <fieldset className="choice-fieldset">
+          <legend>还想再来一次吗？</legend>
+          <div className="choice-row">
+            {WANT_AGAIN.map((item) => (
+              <label key={item.value} className="choice">
+                <input type="radio" name="wantAgain" value={item.value} />
+                {item.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
       </div>
       <button className="btn btn-ghost" type="button" onClick={() => setOpen(false)}>
         先不完成

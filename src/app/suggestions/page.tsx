@@ -20,16 +20,21 @@ export default async function SuggestionsPage({
   if (!membership) redirect("/onboarding");
 
   const { id, remix } = await searchParams;
-  const suggestion = id
-    ? await prisma.suggestion.findFirst({
-        where: { id, spaceId: membership.spaceId },
-        include: { feedbacks: true },
-      })
-    : await prisma.suggestion.findFirst({
-        where: { spaceId: membership.spaceId },
-        orderBy: { createdAt: "desc" },
-        include: { feedbacks: true },
-      });
+  const [suggestion, openPlanCount] = await Promise.all([
+    id
+      ? prisma.suggestion.findFirst({
+          where: { id, spaceId: membership.spaceId },
+          include: { feedbacks: true },
+        })
+      : prisma.suggestion.findFirst({
+          where: { spaceId: membership.spaceId },
+          orderBy: { createdAt: "desc" },
+          include: { feedbacks: true },
+        }),
+    prisma.plan.count({
+      where: { spaceId: membership.spaceId, status: "proposed" },
+    }),
+  ]);
 
   const items = suggestion ? parseSuggestionPayload(suggestion.payload) : [];
   const myFeedback = new Map<number, string>();
@@ -53,10 +58,6 @@ export default async function SuggestionsPage({
     const theyLike = theirs === "like" || theirs === "adopt";
     return Boolean(partner && iLike && theyLike);
   }).length;
-
-  const openPlanCount = await prisma.plan.count({
-    where: { spaceId: membership.spaceId, status: "proposed" },
-  });
 
   return (
     <main className="shell">

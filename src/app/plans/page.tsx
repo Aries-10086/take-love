@@ -5,8 +5,7 @@ import { zhCN } from "date-fns/locale";
 import { ActionForm } from "@/components/action-form";
 import { AppNav } from "@/components/app-nav";
 import { CompletePlanPanel } from "@/components/complete-plan";
-import { StatusSubmit } from "@/components/status-submit";
-import { createPlanAction, generateSuggestionAction, updatePlanScheduleAction } from "@/lib/actions";
+import { createPlanAction, updatePlanScheduleAction } from "@/lib/actions";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMembership } from "@/lib/space";
@@ -52,98 +51,137 @@ export default async function PlansPage() {
           <p className="brand-mark">
             捡爱 <span>约会</span>
           </p>
-          <h1>下次一起做</h1>
-          <p className="lede">采纳建议或自己写一条。设好时间，完成后回流成时刻。</p>
+          <h1>我们约好了</h1>
+          <p className="lede">把下次见面写进日历。做完再沉淀成时刻。</p>
         </div>
       </div>
 
-      <section className="panel stack" style={{ marginBottom: "1.25rem" }}>
-        <h2 className="brand" style={{ margin: 0, fontSize: "1.15rem" }}>
-          手动添加约会
-        </h2>
-        <ActionForm
-          action={createPlanAction}
-          submitLabel="加入待办"
-          submitClassName="btn btn-primary"
-        >
-          <div className="field">
-            <label htmlFor="title">标题</label>
-            <input id="title" name="title" required placeholder="例如：周末去看展" maxLength={80} />
-          </div>
-          <div className="field">
-            <label htmlFor="detail">怎么做</label>
-            <textarea id="detail" name="detail" required placeholder="简单写一下安排" />
-          </div>
-          <div className="field">
-            <label htmlFor="scheduledAt">计划时间（可选）</label>
-            <input id="scheduledAt" name="scheduledAt" type="datetime-local" />
-          </div>
-        </ActionForm>
-      </section>
-
       {openPlans.length === 0 ? (
-        <div className="empty">
-          还没有待办约会。去建议页选一条，或在上方自己添加。
+        <div className="empty empty-craft">
+          <p className="empty-title">还没有下一次见面</p>
+          <p className="empty-body">挑一件小事，写进日历。不必完美，先定下来。</p>
           <div className="inline-actions" style={{ marginTop: "1rem" }}>
-            <Link className="btn btn-accent" href="/suggestions">
-              去选建议
+            <Link className="btn btn-accent" href="#add-plan">
+              自己写一条
             </Link>
-            <form action={generateSuggestionAction}>
-              <StatusSubmit
-                label="直接生成"
-                pendingLabel="生成中…"
-                className="btn btn-ghost"
-              />
-            </form>
+            <Link className="btn btn-ghost" href="/suggestions">
+              从建议里挑
+            </Link>
           </div>
         </div>
       ) : (
-        <section className="panel">
+        <section className="date-card-list">
           {openPlans.map((plan) => {
-            const overdue = plan.scheduledAt && plan.scheduledAt.getTime() < Date.now();
+            const overdue =
+              plan.scheduledAt != null && plan.scheduledAt.getTime() < Date.now();
+            const soon =
+              plan.scheduledAt != null &&
+              !overdue &&
+              plan.scheduledAt.getTime() - Date.now() < 48 * 3600 * 1000;
+            const kicker = overdue
+              ? "该兑现了"
+              : !plan.scheduledAt
+                ? "还没排期"
+                : soon
+                  ? "快到了"
+                  : "我们约好了";
+
             return (
-              <article key={plan.id} className="suggestion-card">
-                <h2>{plan.title}</h2>
-                <p>{plan.detail}</p>
-                <div className="meta-line">
-                  {plan.duration ? <span>时长 {plan.duration}</span> : null}
-                  {plan.budget ? <span>预算 {plan.budget}</span> : null}
+              <article
+                key={plan.id}
+                className={`date-card${overdue ? " overdue" : ""}`}
+              >
+                <div className="date-rail" aria-hidden="true">
                   {plan.scheduledAt ? (
-                    <span className={overdue ? "chip soft" : undefined}>
-                      {overdue ? "已过期 · " : "计划 "}
-                      {format(plan.scheduledAt, "M月d日 HH:mm", { locale: zhCN })}
-                    </span>
+                    <>
+                      <span className="date-rail-month">
+                        {format(plan.scheduledAt, "M月", { locale: zhCN })}
+                      </span>
+                      <span className="date-rail-day">
+                        {format(plan.scheduledAt, "d")}
+                      </span>
+                      <span className="date-rail-week">
+                        {format(plan.scheduledAt, "EEE", { locale: zhCN })}
+                      </span>
+                    </>
                   ) : (
-                    <span>尚未排期</span>
+                    <>
+                      <span className="date-rail-month">待定</span>
+                      <span className="date-rail-day">?</span>
+                    </>
                   )}
                 </div>
-
-                <ActionForm
-                  action={updatePlanScheduleAction}
-                  submitLabel="保存时间"
-                  submitClassName="btn btn-ghost"
-                >
-                  <input type="hidden" name="planId" value={plan.id} />
-                  <div className="field">
-                    <label htmlFor={`sched-${plan.id}`}>改期 / 排期</label>
-                    <input
-                      id={`sched-${plan.id}`}
-                      name="scheduledAt"
-                      type="datetime-local"
-                      defaultValue={toLocalInput(plan.scheduledAt)}
-                    />
+                <div className="date-card-body">
+                  <p className="quality-kicker">{kicker}</p>
+                  <h2 className="date-card-title">{plan.title}</h2>
+                  <p className="date-card-detail">{plan.detail}</p>
+                  <div className="meta-line">
+                    {plan.scheduledAt ? (
+                      <span>
+                        {format(plan.scheduledAt, "HH:mm", { locale: zhCN })}
+                      </span>
+                    ) : null}
+                    {plan.duration ? <span>时长 {plan.duration}</span> : null}
+                    {plan.budget ? <span>预算 {plan.budget}</span> : null}
                   </div>
-                </ActionForm>
 
-                <CompletePlanPanel
-                  planId={plan.id}
-                  defaultHappenedAt={toLocalInput(plan.scheduledAt ?? new Date())}
-                />
+                  <ActionForm
+                    action={updatePlanScheduleAction}
+                    submitLabel={plan.scheduledAt ? "改期" : "定个时间"}
+                    submitClassName="btn btn-ghost"
+                  >
+                    <input type="hidden" name="planId" value={plan.id} />
+                    <div className="field" style={{ marginBottom: "0.45rem" }}>
+                      <label htmlFor={`sched-${plan.id}`}>约会时间</label>
+                      <input
+                        id={`sched-${plan.id}`}
+                        name="scheduledAt"
+                        type="datetime-local"
+                        defaultValue={toLocalInput(plan.scheduledAt)}
+                      />
+                    </div>
+                  </ActionForm>
+
+                  <CompletePlanPanel
+                    planId={plan.id}
+                    defaultHappenedAt={toLocalInput(plan.scheduledAt ?? new Date())}
+                  />
+                </div>
               </article>
             );
           })}
         </section>
       )}
+
+      <details className="add-plan-details" id="add-plan">
+        <summary>手动添加约会</summary>
+        <div className="panel stack" style={{ marginTop: "0.85rem" }}>
+          <ActionForm
+            action={createPlanAction}
+            submitLabel="写入日历"
+            submitClassName="btn btn-primary"
+          >
+            <div className="field">
+              <label htmlFor="title">标题</label>
+              <input
+                id="title"
+                name="title"
+                required
+                placeholder="例如：周末去看展"
+                maxLength={80}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="detail">怎么做</label>
+              <textarea id="detail" name="detail" required placeholder="简单写一下安排" />
+            </div>
+            <div className="field">
+              <label htmlFor="scheduledAt">计划时间（可选）</label>
+              <input id="scheduledAt" name="scheduledAt" type="datetime-local" />
+            </div>
+          </ActionForm>
+        </div>
+      </details>
 
       {completedPlans.length > 0 ? (
         <section style={{ marginTop: "1.5rem" }}>

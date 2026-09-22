@@ -83,76 +83,84 @@ export default async function MomentDetailPage({
               />
             </div>
             <div className="field">
-              <label>心情</label>
-              <div className="choice-row">
-                {MOODS.map((mood) => (
-                  <label key={mood.value} className="choice">
+              <fieldset className="choice-fieldset">
+                <legend>心情</legend>
+                <div className="choice-row">
+                  {MOODS.map((mood) => (
+                    <label key={mood.value} className="choice">
+                      <input
+                        type="radio"
+                        name="mood"
+                        value={mood.value}
+                        defaultChecked={moment.mood === mood.value}
+                        required
+                      />
+                      {mood.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+            <div className="field">
+              <fieldset className="choice-fieldset">
+                <legend>标签</legend>
+                <div className="choice-row">
+                  {TAGS.map((tag) => (
+                    <label key={tag} className="choice">
+                      <input
+                        type="checkbox"
+                        name="tags"
+                        value={tag}
+                        defaultChecked={tags.includes(tag)}
+                      />
+                      {tag}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+            <div className="field">
+              <fieldset className="choice-fieldset">
+                <legend>还想再来一次吗？</legend>
+                <div className="choice-row">
+                  {WANT_AGAIN.map((item) => (
+                    <label key={item.value} className="choice">
+                      <input
+                        type="radio"
+                        name="wantAgain"
+                        value={item.value}
+                        defaultChecked={moment.wantAgain === item.value}
+                      />
+                      {item.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+            <div className="field">
+              <fieldset className="choice-fieldset">
+                <legend>可见性</legend>
+                <div className="choice-row">
+                  <label className="choice">
                     <input
                       type="radio"
-                      name="mood"
-                      value={mood.value}
-                      defaultChecked={moment.mood === mood.value}
-                      required
+                      name="visibility"
+                      value="shared"
+                      defaultChecked={moment.visibility === "shared"}
                     />
-                    {mood.label}
+                    双方可见
                   </label>
-                ))}
-              </div>
-            </div>
-            <div className="field">
-              <label>标签</label>
-              <div className="choice-row">
-                {TAGS.map((tag) => (
-                  <label key={tag} className="choice">
-                    <input
-                      type="checkbox"
-                      name="tags"
-                      value={tag}
-                      defaultChecked={tags.includes(tag)}
-                    />
-                    {tag}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="field">
-              <label>还想再来一次吗？</label>
-              <div className="choice-row">
-                {WANT_AGAIN.map((item) => (
-                  <label key={item.value} className="choice">
+                  <label className="choice">
                     <input
                       type="radio"
-                      name="wantAgain"
-                      value={item.value}
-                      defaultChecked={moment.wantAgain === item.value}
+                      name="visibility"
+                      value="private"
+                      defaultChecked={moment.visibility === "private"}
                     />
-                    {item.label}
+                    仅自己
                   </label>
-                ))}
-              </div>
-            </div>
-            <div className="field">
-              <label>可见性</label>
-              <div className="choice-row">
-                <label className="choice">
-                  <input
-                    type="radio"
-                    name="visibility"
-                    value="shared"
-                    defaultChecked={moment.visibility === "shared"}
-                  />
-                  双方可见
-                </label>
-                <label className="choice">
-                  <input
-                    type="radio"
-                    name="visibility"
-                    value="private"
-                    defaultChecked={moment.visibility === "private"}
-                  />
-                  仅自己
-                </label>
-              </div>
+                </div>
+              </fieldset>
             </div>
             <div className="field">
               <label htmlFor="happenedAt">发生时间</label>

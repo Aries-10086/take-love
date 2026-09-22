@@ -34,11 +34,12 @@ export default async function NewMomentPage() {
         </Link>
       </div>
 
-      <div className="panel">
+      <div className="panel composer-panel">
         <ActionForm
           action={createMomentAction}
           submitLabel="保存这条时刻"
           submitClassName="btn btn-accent btn-block"
+          stickySubmit
         >
           <div className="field">
             <label htmlFor="content">今天的相处（建议 200 字内）</label>
@@ -46,62 +47,70 @@ export default async function NewMomentPage() {
           </div>
 
           <div className="field">
-            <label>心情</label>
-            <div className="choice-row">
-              {MOODS.map((mood, index) => (
-                <label key={mood.value} className="choice">
-                  <input
-                    type="radio"
-                    name="mood"
-                    value={mood.value}
-                    required
-                    defaultChecked={index === 0}
-                  />
-                  {mood.label}
-                </label>
-              ))}
-            </div>
+            <fieldset className="choice-fieldset">
+              <legend>心情</legend>
+              <div className="choice-row">
+                {MOODS.map((mood, index) => (
+                  <label key={mood.value} className="choice">
+                    <input
+                      type="radio"
+                      name="mood"
+                      value={mood.value}
+                      required
+                      defaultChecked={index === 0}
+                    />
+                    {mood.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
 
           <div className="field">
-            <label>还想再来一次吗？</label>
-            <div className="choice-row">
-              {WANT_AGAIN.map((item) => (
-                <label key={item.value} className="choice">
-                  <input type="radio" name="wantAgain" value={item.value} />
-                  {item.label}
-                </label>
-              ))}
-            </div>
+            <fieldset className="choice-fieldset">
+              <legend>还想再来一次吗？</legend>
+              <div className="choice-row">
+                {WANT_AGAIN.map((item) => (
+                  <label key={item.value} className="choice">
+                    <input type="radio" name="wantAgain" value={item.value} />
+                    {item.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
 
           <details className="more-options">
             <summary>更多选项</summary>
             <div className="stack" style={{ marginTop: "0.85rem" }}>
               <div className="field">
-                <label>标签（可选）</label>
-                <div className="choice-row">
-                  {TAGS.map((tag) => (
-                    <label key={tag} className="choice">
-                      <input type="checkbox" name="tags" value={tag} />
-                      {tag}
-                    </label>
-                  ))}
-                </div>
+                <fieldset className="choice-fieldset">
+                  <legend>标签（可选）</legend>
+                  <div className="choice-row">
+                    {TAGS.map((tag) => (
+                      <label key={tag} className="choice">
+                        <input type="checkbox" name="tags" value={tag} />
+                        {tag}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
               </div>
 
               <div className="field">
-                <label>可见性</label>
-                <div className="choice-row">
-                  <label className="choice">
-                    <input type="radio" name="visibility" value="shared" defaultChecked />
-                    双方可见
-                  </label>
-                  <label className="choice">
-                    <input type="radio" name="visibility" value="private" />
-                    仅自己
-                  </label>
-                </div>
+                <fieldset className="choice-fieldset">
+                  <legend>可见性</legend>
+                  <div className="choice-row">
+                    <label className="choice">
+                      <input type="radio" name="visibility" value="shared" defaultChecked />
+                      双方可见
+                    </label>
+                    <label className="choice">
+                      <input type="radio" name="visibility" value="private" />
+                      仅自己
+                    </label>
+                  </div>
+                </fieldset>
               </div>
 
               <div className="field">
