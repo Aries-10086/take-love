@@ -28,19 +28,34 @@ async function main() {
     where: { userId: { in: [alice.id, bob.id] } },
   });
 
+  const anniversaryAt = new Date();
+  anniversaryAt.setDate(anniversaryAt.getDate() + 5);
+
   const space = await prisma.space.upsert({
     where: { inviteCode: "LOVE26" },
     update: {
       name: "我们的捡爱",
       createdBy: alice.id,
+      anniversaryAt,
+      budgetPref: "mid",
     },
     create: {
       name: "我们的捡爱",
       inviteCode: "LOVE26",
       createdBy: alice.id,
+      anniversaryAt,
+      budgetPref: "mid",
     },
   });
 
+  await prisma.syncAnswer.deleteMany({
+    where: { question: { spaceId: space.id } },
+  });
+  await prisma.syncQuestion.deleteMany({ where: { spaceId: space.id } });
+  await prisma.surpriseNote.deleteMany({ where: { spaceId: space.id } });
+  await prisma.wishItem.deleteMany({ where: { spaceId: space.id } });
+  await prisma.dailyMood.deleteMany({ where: { spaceId: space.id } });
+  await prisma.compliment.deleteMany({ where: { spaceId: space.id } });
   await prisma.suggestionFeedback.deleteMany({
     where: { suggestion: { spaceId: space.id } },
   });
@@ -56,6 +71,9 @@ async function main() {
     ],
   });
 
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 3);
+
   await prisma.moment.createMany({
     data: [
       {
@@ -66,6 +84,7 @@ async function main() {
         tags: JSON.stringify(["散步", "认真聊天"]),
         wantAgain: "yes",
         visibility: "shared",
+        happenedAt: weekAgo,
       },
       {
         spaceId: space.id,

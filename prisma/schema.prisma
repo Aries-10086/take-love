@@ -24,6 +24,9 @@ model User {
   syncQuestions        SyncQuestion[]
   syncAnswers          SyncAnswer[]
   surpriseNotes        SurpriseNote[]
+  wishItems            WishItem[]
+  dailyMoods           DailyMood[]
+  compliments          Compliment[]
 }
 
 model Space {
@@ -43,6 +46,9 @@ model Space {
   plans       Plan[]
   syncQuestions SyncQuestion[]
   surpriseNotes SurpriseNote[]
+  wishItems     WishItem[]
+  dailyMoods    DailyMood[]
+  compliments   Compliment[]
 }
 
 model SpaceMember {
@@ -161,6 +167,45 @@ model SurpriseNote {
   isRevealed Boolean   @default(false)
   revealedAt DateTime?
   createdAt  DateTime  @default(now())
+
+  space  Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  author User  @relation(fields: [authorId], references: [id])
+}
+
+model WishItem {
+  id        String    @id @default(cuid())
+  spaceId   String
+  authorId  String
+  content   String
+  isDone    Boolean   @default(false)
+  doneAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  space  Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  author User  @relation(fields: [authorId], references: [id])
+}
+
+model DailyMood {
+  id        String   @id @default(cuid())
+  spaceId   String
+  userId    String
+  day       String // yyyy-mm-dd
+  mood      String
+  note      String?
+  createdAt DateTime @default(now())
+
+  space Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([spaceId, userId, day])
+}
+
+model Compliment {
+  id        String   @id @default(cuid())
+  spaceId   String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
 
   space  Space @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   author User  @relation(fields: [authorId], references: [id])

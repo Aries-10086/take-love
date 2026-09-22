@@ -15,8 +15,11 @@ const body = Noto_Sans_SC({
 });
 
 export const metadata: Metadata = {
-  title: "捡爱",
-  description: "记录情侣的恋爱时刻，并根据记录给出下一次约会建议。",
+  title: {
+    default: "捡爱",
+    template: "%s · 捡爱",
+  },
+  description: "双人私密恋爱空间：记录相处时刻，一起决定下一次约会。没有广场，只有你们。",
 };
 
 export default function RootLayout({

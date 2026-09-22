@@ -110,6 +110,118 @@ export const SYNC_PROMPTS = [
   "用一个词形容现在的我们。",
 ];
 
+export const TONIGHT_OPTIONS = [
+  "今晚听你的",
+  "今晚听我的",
+  "掷硬币再定",
+  "一人选一道菜",
+  "关掉手机一小时",
+  "一起散十分钟步",
+];
+
+export const DARE_SPINS = [
+  "给对方写一句没说过的夸奖",
+  "模仿对方最常用的口头禅",
+  "今晚由对方点歌，完整听完",
+  "交换手机壁纸一天",
+  "一起做一件从没做过的小事",
+  "用三句话复盘今天",
+  "给对方揉肩两分钟",
+  "一起挑下周约会的候选",
+  "互相说一件最近的小担忧",
+  "今晚不看短视频，只聊天",
+];
+
+export const TRUTH_CARDS = [
+  "你最近一次想我，是因为什么？",
+  "如果重来一次第一次见面，你会改什么？",
+  "你希望我多做一件什么小事？",
+  "我们相处里，你最安心的瞬间是？",
+  "有什么话你想说但一直没说出口？",
+  "你觉得我们现在最需要补的是什么？",
+  "用一种食物形容我，为什么？",
+  "你最想一起完成的一件长期事是什么？",
+];
+
+export const WOULD_YOU_RATHER = [
+  { a: "周末宅家看电影", b: "出门随便走走吃吃" },
+  { a: "突然的小旅行", b: "计划很久的正式约会" },
+  { a: "互送实用礼物", b: "互送很傻但很甜的礼物" },
+  { a: "一起做饭", b: "一起探店" },
+  { a: "早安长语音", b: "晚安短消息" },
+  { a: "盛大纪念日", b: "普通日子里的小仪式" },
+  { a: "并肩安静坐着", b: "聊到停不下来" },
+  { a: "雨天约会", b: "晴天野餐" },
+];
+
+export const FORTUNE_STICKS = [
+  "上签：今晚适合坦白一件小事。",
+  "上签：你们最近的耐心，会换来一次很甜的回应。",
+  "中签：先解决肚子，再解决情绪。",
+  "中签：把手机放下十分钟，世界会小一点。",
+  "上签：一个拥抱，胜过三条解释。",
+  "下签转上：今天有点别扭也没关系，睡一觉会好。",
+  "上签：去翻翻你们最早的一条时刻。",
+  "中签：让对方选今晚的歌单。",
+  "上签：说一句「谢谢你还在」。",
+  "中签：一起列三个下周想做的小事。",
+];
+
+export const HOT_SEAT = [
+  "如果我变成一只动物，你会怎么照顾我？",
+  "你觉得我最被低估的优点是什么？",
+  "我们下次吵架时，你希望我怎么做？",
+  "用一部电影形容我们现在的阶段。",
+  "你偷偷希望我养成的一个习惯是？",
+  "如果明天只有我们两个人的世界，你想先做什么？",
+];
+
+export const MADLIB_TEMPLATES = [
+  {
+    labels: ["形容词", "地点", "小事", "感受"],
+    build: (w: string[]) =>
+      `在那个${w[0]}的${w[1]}，我们做了${w[2]}。我当时觉得${w[3]}，现在想起来还是会笑。`,
+  },
+  {
+    labels: ["称呼", "食物", "天气", "约定"],
+    build: (w: string[]) =>
+      `亲爱的${w[0]}：今晚想和你吃${w[1]}。就算${w[2]}，也想牵着你，完成我们的${w[3]}。`,
+  },
+  {
+    labels: ["时间", "歌曲", "动作", "结束语"],
+    build: (w: string[]) =>
+      `${w[0]}的时候，耳机里是${w[1]}。我想${w[2]}，然后对你说：${w[3]}。`,
+  },
+];
+
+export function dayKeysBack(n: number, from = new Date()) {
+  const keys: string[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const d = new Date(from);
+    d.setDate(from.getDate() - i);
+    keys.push(todayKey(d));
+  }
+  return keys;
+}
+
+/** Count consecutive days (from today backward) where both members logged mood. */
+export function computeMoodStreak(
+  days: string[],
+  moods: { userId: string; day: string }[],
+  memberIds: string[],
+) {
+  if (memberIds.length < 2) return 0;
+  let streak = 0;
+  for (const day of days) {
+    const logged = new Set(
+      moods.filter((m) => m.day === day).map((m) => m.userId),
+    );
+    if (memberIds.every((id) => logged.has(id))) streak += 1;
+    else break;
+  }
+  return streak;
+}
+
 export function normalizeAnswer(text: string) {
   return text.trim().toLowerCase().replace(/\s+/g, "");
 }
@@ -120,4 +232,11 @@ export function answersMatch(a: string, b: string) {
   if (!na || !nb) return false;
   if (na === nb) return true;
   return na.includes(nb) || nb.includes(na);
+}
+
+export function todayKey(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }

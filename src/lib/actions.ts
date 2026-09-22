@@ -7,13 +7,31 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { signIn, signOut } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getMembership, makeInviteCode, requireUser } from "@/lib/space";
-import { generateSuggestions, parseSuggestionPayload, parseTags, isAnniversarySoon, anniversaryRitualItem } from "@/lib/suggestions";
+import { clientKey, rateLimit } from "@/lib/rate-limit";
+import {
+  allocateInviteCode,
+  getMembership,
+  makeInviteCode,
+  requireUser,
+} from "@/lib/space";
+import {
+  generateSuggestions,
+  parseSuggestionPayload,
+  parseTags,
+  isAnniversarySoon,
+  anniversaryRitualItem,
+} from "@/lib/suggestions";
+import {
+  sanitizeMood,
+  sanitizeTags,
+  sanitizeVisibility,
+  sanitizeWantAgain,
+} from "@/lib/validate";
 
 const registerSchema = z.object({
   name: z.string().min(1).max(40),
   email: z.string().email(),
-  password: z.string().min(6).max(72),
+  password: z.string().min(8).max(72),
 });
 
 export type ActionState = {
@@ -25,13 +43,18 @@ export async function registerAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const limited = rateLimit(clientKey("register", formData), 8, 15 * 60_000);
+  if (!limited.ok) {
+    return { error: `尝试太频繁，请 ${limited.retryAfterSec} 秒后再试` };
+  }
+
   const parsed = registerSchema.safeParse({
     name: formData.get("name"),
     email: formData.get("email"),
     password: formData.get("password"),
   });
   if (!parsed.success) {
-    return { error: "请填写有效的昵称、邮箱和至少 6 位密码" };
+    return { error: "请填写有效的昵称、邮箱和至少 8 位密码" };
   }
 
   const email = parsed.data.email.toLowerCase();
@@ -39,7 +62,7 @@ export async function registerAction(
   if (exists) return { error: "这个邮箱已经注册过了" };
 
   const passwordHash = await hash(parsed.data.password, 10);
-  await prisma.user.create({
+  const created = await prisma.user.create({
     data: {
       name: parsed.data.name.trim(),
       email,
@@ -47,11 +70,42 @@ export async function registerAction(
     },
   });
 
+  const inviteCode = String(formData.get("inviteCode") ?? "")
+    .trim()
+    .toUpperCase();
+  let joined = false;
+
+  if (inviteCode) {
+    try {
+      await prisma.$transaction(async (tx) => {
+        const space = await tx.space.findUnique({
+          where: { inviteCode },
+          include: { members: true },
+        });
+        if (!space || space.members.length >= 2) return;
+        await tx.spaceMember.create({
+          data: {
+            spaceId: space.id,
+            userId: created.id,
+            role: "member",
+          },
+        });
+        joined = true;
+      });
+    } catch {
+      joined = false;
+    }
+  }
+
   try {
     await signIn("credentials", {
       email,
       password: parsed.data.password,
-      redirectTo: "/enter",
+      redirectTo: joined
+        ? "/home?joined=1"
+        : inviteCode
+          ? `/onboarding?code=${encodeURIComponent(inviteCode)}`
+          : "/enter",
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -67,13 +121,21 @@ export async function loginAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const limited = rateLimit(clientKey("login", formData), 12, 15 * 60_000);
+  if (!limited.ok) {
+    return { error: `尝试太频繁，请 ${limited.retryAfterSec} 秒后再试` };
+  }
+
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const nextRaw = String(formData.get("next") ?? "").trim();
+  const next =
+    nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : "/enter";
   try {
     await signIn("credentials", {
       email,
       password,
-      redirectTo: "/enter",
+      redirectTo: next,
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -85,6 +147,53 @@ export async function loginAction(
 }
 
 export async function logoutAction() {
+  await signOut({ redirectTo: "/" });
+}
+
+/** Leave space (with handoff), anonymize credentials, then sign out. */
+export async function deleteAccountAction() {
+  const user = await requireUser();
+  if (!user?.id) redirect("/login");
+
+  const membership = await getMembership(user.id);
+  if (membership) {
+    const spaceId = membership.spaceId;
+    await prisma.$transaction(async (tx) => {
+      await tx.spaceMember.delete({ where: { id: membership.id } });
+      const remaining = await tx.spaceMember.findMany({ where: { spaceId } });
+      if (remaining.length === 0) {
+        await tx.space.delete({ where: { id: spaceId } });
+      } else {
+        const heir = remaining[0];
+        let inviteCode = makeInviteCode();
+        for (let i = 0; i < 8; i += 1) {
+          const clash = await tx.space.findUnique({ where: { inviteCode } });
+          if (!clash) break;
+          inviteCode = makeInviteCode();
+        }
+        await tx.spaceMember.update({
+          where: { id: heir.id },
+          data: { role: "owner" },
+        });
+        await tx.space.update({
+          where: { id: spaceId },
+          data: { createdBy: heir.userId, inviteCode },
+        });
+      }
+    });
+  }
+
+  const tombstone = `deleted_${user.id.slice(0, 8)}_${Date.now()}@invalid.local`;
+  const passwordHash = await hash(`${user.id}.${Date.now()}.revoked`, 10);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      email: tombstone,
+      name: "已注销用户",
+      passwordHash,
+    },
+  });
+
   await signOut({ redirectTo: "/" });
 }
 
@@ -101,11 +210,14 @@ export async function createSpaceAction(
   }
 
   const name = String(formData.get("name") ?? "").trim() || "我们的捡爱";
-  let inviteCode = makeInviteCode();
-  for (let i = 0; i < 5; i += 1) {
-    const clash = await prisma.space.findUnique({ where: { inviteCode } });
-    if (!clash) break;
-    inviteCode = makeInviteCode();
+  let inviteCode: string;
+  try {
+    inviteCode = await allocateInviteCode(async (code) => {
+      const clash = await prisma.space.findUnique({ where: { inviteCode: code } });
+      return Boolean(clash);
+    });
+  } catch {
+    return { error: "邀请码生成失败，请稍后再试" };
   }
 
   await prisma.space.create({
@@ -131,6 +243,11 @@ export async function joinSpaceAction(
 ): Promise<ActionState> {
   const user = await requireUser();
   if (!user?.id) return { error: "请先登录" };
+
+  const limited = rateLimit(clientKey("join", formData, user.id), 10, 15 * 60_000);
+  if (!limited.ok) {
+    return { error: `尝试太频繁，请 ${limited.retryAfterSec} 秒后再试` };
+  }
 
   const existing = await getMembership(user.id);
   if (existing) return { error: "你已经在一个恋爱空间里了" };
@@ -182,16 +299,43 @@ export async function leaveSpaceAction() {
 
   const spaceId = membership.spaceId;
 
-  await prisma.$transaction(async (tx) => {
-    await tx.spaceMember.delete({ where: { id: membership.id } });
-    const remaining = await tx.spaceMember.count({ where: { spaceId } });
-    // Last person out: remove the empty space and cascaded content
-    if (remaining === 0) {
-      await tx.space.delete({ where: { id: spaceId } });
-    }
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.spaceMember.delete({ where: { id: membership.id } });
+      const remaining = await tx.spaceMember.findMany({ where: { spaceId } });
+
+      if (remaining.length === 0) {
+        await tx.space.delete({ where: { id: spaceId } });
+        return;
+      }
+
+      // Promote the remaining partner and rotate invite so old codes die.
+      const heir = remaining[0];
+      let inviteCode = makeInviteCode();
+      for (let i = 0; i < 8; i += 1) {
+        const clash = await tx.space.findUnique({ where: { inviteCode } });
+        if (!clash) break;
+        inviteCode = makeInviteCode();
+      }
+
+      await tx.spaceMember.update({
+        where: { id: heir.id },
+        data: { role: "owner" },
+      });
+      await tx.space.update({
+        where: { id: spaceId },
+        data: {
+          createdBy: heir.userId,
+          inviteCode,
+        },
+      });
+    });
+  } catch {
+    redirect("/settings");
+  }
 
   revalidatePath("/home");
+  revalidatePath("/settings");
   redirect("/onboarding");
 }
 
@@ -243,15 +387,16 @@ export async function resetInviteCodeAction(
   if (!user?.id) return { error: "请先登录" };
   const membership = await getMembership(user.id);
   if (!membership) return { error: "请先加入空间" };
-  if (membership.role !== "owner" && membership.space.createdBy !== user.id) {
-    return { error: "只有创建者可以重置邀请码" };
-  }
 
-  let inviteCode = makeInviteCode();
-  for (let i = 0; i < 5; i += 1) {
-    const clash = await prisma.space.findUnique({ where: { inviteCode } });
-    if (!clash) break;
-    inviteCode = makeInviteCode();
+  // Any remaining member can rotate the invite (needed after ownership handoff).
+  let inviteCode: string;
+  try {
+    inviteCode = await allocateInviteCode(async (code) => {
+      const clash = await prisma.space.findUnique({ where: { inviteCode: code } });
+      return Boolean(clash);
+    });
+  } catch {
+    return { error: "邀请码生成失败，请稍后再试" };
   }
 
   await prisma.space.update({
@@ -273,18 +418,16 @@ export async function createMomentAction(
   if (!membership) return { error: "请先创建或加入空间" };
 
   const content = String(formData.get("content") ?? "").trim();
-  const mood = String(formData.get("mood") ?? "");
-  const visibility = String(formData.get("visibility") ?? "shared");
-  const wantAgain = String(formData.get("wantAgain") ?? "") || null;
+  const mood = sanitizeMood(String(formData.get("mood") ?? ""));
+  const visibility = sanitizeVisibility(String(formData.get("visibility") ?? "shared"));
+  const wantAgain = sanitizeWantAgain(String(formData.get("wantAgain") ?? ""));
   const happenedAtRaw = String(formData.get("happenedAt") ?? "");
-  const tags = formData.getAll("tags").map(String);
+  const tags = sanitizeTags(formData.getAll("tags").map(String));
 
   if (!content) return { error: "写一句今天的相处吧" };
   if (content.length > 200) return { error: "尽量控制在 200 字以内" };
   if (!mood) return { error: "选一个心情" };
-  if (!["shared", "private"].includes(visibility)) {
-    return { error: "可见性不合法" };
-  }
+  if (!visibility) return { error: "可见性不合法" };
 
   await prisma.moment.create({
     data: {
@@ -314,15 +457,16 @@ export async function updateMomentAction(
 
   const momentId = String(formData.get("momentId") ?? "");
   const content = String(formData.get("content") ?? "").trim();
-  const mood = String(formData.get("mood") ?? "");
-  const visibility = String(formData.get("visibility") ?? "shared");
-  const wantAgain = String(formData.get("wantAgain") ?? "") || null;
+  const mood = sanitizeMood(String(formData.get("mood") ?? ""));
+  const visibility = sanitizeVisibility(String(formData.get("visibility") ?? "shared"));
+  const wantAgain = sanitizeWantAgain(String(formData.get("wantAgain") ?? ""));
   const happenedAtRaw = String(formData.get("happenedAt") ?? "");
-  const tags = formData.getAll("tags").map(String);
+  const tags = sanitizeTags(formData.getAll("tags").map(String));
 
   if (!content) return { error: "写一句今天的相处吧" };
   if (content.length > 200) return { error: "尽量控制在 200 字以内" };
   if (!mood) return { error: "选一个心情" };
+  if (!visibility) return { error: "可见性不合法" };
 
   const moment = await prisma.moment.findFirst({
     where: { id: momentId, spaceId: membership.spaceId, authorId: user.id },
@@ -786,8 +930,8 @@ export async function completePlanAction(
 
   const planId = String(formData.get("planId") ?? "");
   const note = String(formData.get("note") ?? "").trim();
-  const mood = String(formData.get("mood") ?? "happy");
-  const wantAgain = String(formData.get("wantAgain") ?? "") || null;
+  const mood = sanitizeMood(String(formData.get("mood") ?? "happy")) ?? "happy";
+  const wantAgain = sanitizeWantAgain(String(formData.get("wantAgain") ?? ""));
   const happenedAtRaw = String(formData.get("happenedAt") ?? "");
 
   const plan = await prisma.plan.findFirst({
@@ -952,4 +1096,111 @@ export async function revealSurpriseNoteAction(noteId: string) {
     data: { isRevealed: true, revealedAt: new Date() },
   });
   revalidatePath("/magic");
+}
+
+export async function createWishAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  if (!user?.id) return { error: "请先登录" };
+  const membership = await getMembership(user.id);
+  if (!membership) return { error: "请先加入空间" };
+
+  const content = String(formData.get("content") ?? "").trim();
+  if (!content) return { error: "写一个想一起做的愿望" };
+  if (content.length > 120) return { error: "愿望请控制在 120 字内" };
+
+  await prisma.wishItem.create({
+    data: {
+      spaceId: membership.spaceId,
+      authorId: user.id,
+      content,
+    },
+  });
+  revalidatePath("/magic");
+  return { success: "已投进愿望罐" };
+}
+
+export async function toggleWishDoneAction(wishId: string) {
+  const user = await requireUser();
+  if (!user?.id) return;
+  const membership = await getMembership(user.id);
+  if (!membership) return;
+
+  const wish = await prisma.wishItem.findFirst({
+    where: { id: wishId, spaceId: membership.spaceId },
+  });
+  if (!wish) return;
+
+  await prisma.wishItem.update({
+    where: { id: wish.id },
+    data: {
+      isDone: !wish.isDone,
+      doneAt: wish.isDone ? null : new Date(),
+    },
+  });
+  revalidatePath("/magic");
+}
+
+export async function submitDailyMoodAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  if (!user?.id) return { error: "请先登录" };
+  const membership = await getMembership(user.id);
+  if (!membership) return { error: "请先加入空间" };
+
+  const mood = sanitizeMood(String(formData.get("mood") ?? ""));
+  const note = String(formData.get("note") ?? "").trim().slice(0, 80) || null;
+  if (!mood) return { error: "选一个心情" };
+
+  const { todayKey } = await import("@/lib/magic");
+  const day = todayKey();
+
+  await prisma.dailyMood.upsert({
+    where: {
+      spaceId_userId_day: {
+        spaceId: membership.spaceId,
+        userId: user.id,
+        day,
+      },
+    },
+    create: {
+      spaceId: membership.spaceId,
+      userId: user.id,
+      day,
+      mood,
+      note,
+    },
+    update: { mood, note },
+  });
+
+  revalidatePath("/magic");
+  return { success: "今日心情已记下" };
+}
+
+export async function createComplimentAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  if (!user?.id) return { error: "请先登录" };
+  const membership = await getMembership(user.id);
+  if (!membership) return { error: "请先加入空间" };
+
+  const content = String(formData.get("content") ?? "").trim();
+  if (!content) return { error: "写一句夸奖吧" };
+  if (content.length > 120) return { error: "请控制在 120 字内" };
+
+  await prisma.compliment.create({
+    data: {
+      spaceId: membership.spaceId,
+      authorId: user.id,
+      content,
+    },
+  });
+  revalidatePath("/magic");
+  return { success: "已贴上夸夸墙" };
 }

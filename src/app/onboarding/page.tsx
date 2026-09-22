@@ -4,9 +4,22 @@ import { createSpaceAction, joinSpaceAction } from "@/lib/actions";
 import { auth } from "@/lib/auth";
 import { getMembership } from "@/lib/space";
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ code?: string }>;
+}) {
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const { code } = await searchParams;
+  const prefill = (code ?? "").trim().toUpperCase().slice(0, 6);
+
+  if (!session?.user?.id) {
+    redirect(
+      prefill
+        ? `/register?code=${encodeURIComponent(prefill)}`
+        : "/login",
+    );
+  }
 
   const membership = await getMembership(session.user.id);
   if (membership) redirect("/home");
@@ -56,6 +69,8 @@ export default async function OnboardingPage() {
                 name="inviteCode"
                 placeholder="6 位邀请码"
                 maxLength={6}
+                defaultValue={prefill}
+                autoComplete="off"
                 style={{ textTransform: "uppercase", letterSpacing: "0.12em" }}
               />
             </div>
